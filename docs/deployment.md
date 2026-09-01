@@ -78,9 +78,10 @@ rejecting the callback.
 > the first thing to check — re-read the URI in the console against the exact
 > value of `APP_ORIGIN` in the deployed values, byte for byte.
 
-Local dev (`http://localhost`) is already an authorized redirect URI on the
-existing client — no console change is needed to develop locally or to pass
-Gate 1.
+Local dev uses `http://localhost:4200` because Angular's dev server proxies
+the callback to the API. Add
+`http://localhost:4200/auth/google/callback` to the existing client's
+authorized redirect URIs before testing the local login round-trip.
 
 ## Release / rollback procedure
 

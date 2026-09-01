@@ -41,10 +41,10 @@ set -a && . .env && set +a && npm run dev   # api :3000, web :4200
 Then open `http://localhost:4200`.
 
 `.env.example` already defaults `COOKIE_SECURE=false` and
-`APP_ORIGIN=http://localhost` for local dev — leave those two as-is unless
-you're testing against a deployed environment. `http://localhost` is already
-a registered redirect origin on the Google OAuth client, so the login
-round-trip works locally with no console changes.
+`APP_ORIGIN=http://localhost:4200` for local dev — leave those two as-is unless
+you're testing against a deployed environment. Add
+`http://localhost:4200/auth/google/callback` to the existing Google OAuth
+client's authorized redirect URIs for local development.
 
 `npm run dev` runs the api (`apps/api`, NestJS, port 3000 — fixed by
 convention, nothing else should bind it) and the Angular dev server
