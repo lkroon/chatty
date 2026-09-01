@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencode-chat
+spec:
+  # Explicit (unlike the frameworks source chart, which omits this because
+  # its HPA owns the count): this chart has no HPA, so Helm/K8s defaults
+  # must not be left to chance.
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: opencode-chat
+  template:
+    metadata:
+      labels:
+        app: opencode-chat
+    spec:
+      containers:
+        - name: opencode-chat
+          image: {{ .Values.imageRegistry }}/opencode-chat:{{ .Values.imageTag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL
+            - name: APP_ORIGIN
+              value: {{ .Values.app.origin | quote }}
+            - name: COOKIE_SECURE
+              value: {{ .Values.app.cookieSecure | quote }}
+            - name: ALLOWED_EMAILS
+              value: {{ .Values.app.allowedEmails | quote }}
+            - name: DAILY_MESSAGE_LIMIT
+              value: {{ .Values.app.dailyMessageLimit | quote }}
+            - name: OPENCODE_BASE_URL
+              value: {{ .Values.app.opencodeBaseUrl | quote }}
+            - name: OPENCODE_MODELS
+              value: {{ .Values.app.opencodeModels | quote }}
+            - name: APP_VERSION
+              value: {{ .Values.imageTag | quote }}
+            # Downward API: pod identity, useful for logs/diagnostics
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            # Created out-of-band (kubectl, not this chart): OPENCODE_API_KEY,
+            # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET. See
+            # k8s/cluster-up.sh.
+            - secretRef:
+                name: {{ .Values.authSecretName }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opencode-chat
+spec:
+  selector:
+    app: opencode-chat
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
