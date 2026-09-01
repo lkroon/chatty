@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, Injectable } from '@nestjs/common';
 
 // Placeholder for workstream B's real AuthGuard (session + allowlist
 // check). Always allows requests through — Wave 0 has no auth yet.
@@ -6,7 +6,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 // that wires it up) with the real guard.
 @Injectable()
 export class NoopAuthGuard implements CanActivate {
-  canActivate(_context: ExecutionContext): boolean {
+  canActivate(): boolean {
     return true;
   }
 }
