@@ -1,4 +1,16 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // tsc-alias (run against *this* file, see package.json "build" script)
+    // resolves "paths" targets relative to outDir, not baseUrl — one
+    // directory level deeper than tsc's own baseUrl-relative resolution
+    // in tsconfig.json. Hence the extra "../" here vs. tsconfig.json's
+    // "@contracts" mapping. Keep both in sync (id/count of path segments)
+    // if libs/contracts ever moves.
+    "paths": {
+      "@contracts": ["../../../libs/contracts/dist/index"],
+      "@contracts/*": ["../../../libs/contracts/dist/*"]
+    }
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
