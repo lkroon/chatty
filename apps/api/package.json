@@ -68,6 +68,10 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^@contracts$": "<rootDir>/../../../libs/contracts/dist/index",
+      "^@contracts/(.*)$": "<rootDir>/../../../libs/contracts/dist/$1"
+    },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
