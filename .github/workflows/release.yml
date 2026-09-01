@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IMAGE: ghcr.io/lkroon/opencode-chat
+
+# The bump-chart job below pushes a commit straight back to this repo using
+# the default GITHUB_TOKEN, so this workflow needs write access to both the
+# repo contents (for that push) and GHCR (to publish the image) — no
+# separate PAT. `[skip ci]` on the bump commit, plus the fact that pushes
+# authored by GITHUB_TOKEN don't retrigger workflows on this repo, are both
+# belt-and-braces against a build loop, not the sole mechanism preventing
+# one.
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}
+
+  bump-chart:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Wave 1 workstream G owns charts/opencode-chat/values.yaml. This
+      # step assumes it exists with a top-level `imageTag:` key by the time
+      # a release tag is pushed.
+      - name: Bump imageTag
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          FILE="charts/opencode-chat/values.yaml"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::$FILE not found — expected Wave 1 chart workstream to have created it by release time"
+            exit 1
+          fi
+          sed -i -E "s/^(\s*imageTag:\s*).*/\1\"${TAG}\"/" "$FILE"
+          if ! grep -qF "imageTag: \"${TAG}\"" "$FILE"; then
+            echo "::error::failed to bump imageTag in $FILE (no top-level 'imageTag:' key found?)"
+            exit 1
+          fi
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/opencode-chat/values.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(release): bump imageTag to ${{ github.ref_name }} [skip ci]"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
