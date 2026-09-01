@@ -1,0 +1,16 @@
+# Node / npm workspaces (node_modules can exist at root and per-workspace)
+node_modules/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
