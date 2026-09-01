@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "paths": {
+      "@contracts": ["../../libs/contracts/dist/index"],
+      "@contracts/*": ["../../libs/contracts/dist/*"]
+    }
+  }
+}

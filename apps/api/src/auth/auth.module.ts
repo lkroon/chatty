@@ -1,20 +1,22 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { NoopAuthGuard } from './noop-auth.guard';
+import { AuthController } from './auth.controller';
+import { AuthGuard } from './auth.guard';
+import { MeRouteRegistrar } from './me-route.registrar';
+import { registerGoogleStrategy } from './google.strategy';
+import { pgPool } from './pg-pool';
 
-// Wave 1 workstream B owns this module: Passport Google OAuth strategy,
-// AuthController (/auth/google, /auth/google/callback, /auth/logout,
-// /api/auth/me), the allowlist check, and the global AuthGuard.
-//
-// The APP_GUARD provider below is the global guard registration point:
-// replace NoopAuthGuard with the real AuthGuard (and delete
-// noop-auth.guard.ts) when implementing this module.
+// Google OAuth login, the ALLOWED_EMAILS allowlist gate, session
+// management, and the global AuthGuard. See auth.controller.ts and
+// me-route.registrar.ts for how the /auth/* vs /api/auth/me routing
+// split is resolved, and auth.guard.ts for why /healthz, /readyz and
+// /auth/* need an explicit guard bypass.
 @Module({
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: NoopAuthGuard,
-    },
-  ],
+  controllers: [AuthController],
+  providers: [MeRouteRegistrar, { provide: APP_GUARD, useClass: AuthGuard }],
 })
-export class AuthModule {}
+export class AuthModule implements OnModuleInit {
+  onModuleInit(): void {
+    registerGoogleStrategy(pgPool);
+  }
+}

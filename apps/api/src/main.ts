@@ -2,7 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { RequestMethod } from '@nestjs/common';
 import * as session from 'express-session';
+import * as ConnectPgSimple from 'connect-pg-simple';
 import { AppModule } from './app.module';
+import { pgPool } from './auth/pg-pool';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -12,24 +14,26 @@ async function bootstrap() {
   // headers for req.secure / the secure cookie flag to work correctly.
   app.set('trust proxy', 1);
 
+  const PgSession = ConnectPgSimple(session);
   app.use(
     session({
-      // AUTH-STORE: no `store` option set below, so express-session falls
-      // back to its default in-memory MemoryStore (dev-only — leaks
-      // memory and doesn't survive a restart or work across replicas).
-      // Workstream B replaces this with a Postgres-backed store
-      // (connect-pg-simple, `createTableIfMissing: true` — no migration
-      // ships the `session` table) by adding a `store:` option here.
+      // Postgres-backed store (default `session` table, created on boot
+      // if missing) so a pod restart or a second replica doesn't log
+      // users out. `pgPool` is shared with the `accounts` upsert query —
+      // see apps/api/src/auth/pg-pool.ts.
+      store: new PgSession({ pool: pgPool, createTableIfMissing: true }),
+      name: 'opencode-chat.sid',
       secret: process.env.SESSION_SECRET ?? 'dev-secret-change-me',
       resave: false,
       saveUninitialized: false,
+      rolling: true, // 30-day rolling: every response resets the cookie's Max-Age
       cookie: {
         httpOnly: true,
         // COOKIE_SECURE env var: bool, default true; set to the literal
         // string 'false' only for local http development.
         secure: process.env.COOKIE_SECURE !== 'false',
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // placeholder — workstream B owns final cookie settings
+        maxAge: 30 * 24 * 60 * 60 * 1000,
       },
     }),
   );
@@ -44,9 +48,8 @@ async function bootstrap() {
   // NoopAuthGuard as APP_GUARD (always allows requests) for Wave 0.
   // Workstream B swaps it there for the real session/allowlist AuthGuard.
 
-  // NEVER add app.use(compression()) here (or anywhere else in this
-  // project) — it buffers responses and breaks SSE streaming for
-  // POST /api/chat. Hard rule, not just a Wave 0 placeholder.
+  // Do not enable response compression here (or anywhere else in this
+  // project): it buffers responses and breaks SSE streaming for POST /api/chat.
 
   app.setGlobalPrefix('api', {
     // /healthz and /readyz are unauthenticated probes with no /api

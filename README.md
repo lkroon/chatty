@@ -32,8 +32,10 @@ Five commands, Postgres in Docker, everything else on the host:
 git clone <repo-url> && cd opencode-chat
 cp .env.example .env   # fill in OPENCODE_API_KEY, GOOGLE_CLIENT_ID/SECRET, SESSION_SECRET
 npm install
-docker compose -f docker-compose.dev.yml up -d   # postgres only
-npm run dev   # api on :3000, web dev server on :4200 (proxies /api, /auth to :3000)
+docker compose -f docker-compose.dev.yml up -d \
+  && DATABASE_URL=postgresql://app:app@localhost:5432/appdb \
+  npx ts-node apps/api/src/db/run-migrations.ts   # postgres + schema
+set -a && . .env && set +a && npm run dev   # api :3000, web :4200
 ```
 
 Then open `http://localhost:4200`.
@@ -55,6 +57,7 @@ convention, nothing else should bind it) and the Angular dev server
 npm run build   # builds api then web
 npm run lint    # lints both apps
 npm run format  # prettier --write across apps/ and libs/
+./run-tests.sh  # runs API tests against an ephemeral Postgres container
 ```
 
 ## Documentation

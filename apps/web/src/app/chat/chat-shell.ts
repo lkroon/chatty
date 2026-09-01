@@ -1,11 +1,28 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 
-// Wave 1 workstream D owns this directory: the chat shell (conversation
-// list, message thread, composer, SSE streaming via POST /api/chat).
-// Minimal stub for Wave 0 — just enough for routing to resolve.
+import { CHAT_API } from '../core/chat-api';
+import { ChatStore } from '../core/chat-store';
+import { RealChatApi } from '../core/real-chat-api';
+import { Composer } from './composer';
+import { ConversationList } from './conversation-list';
+import { MessageThread } from './message-thread';
+import { ModelPicker } from './model-picker';
+
+/**
+ * Root chat feature component. Wires up the `CHAT_API` DI token and the
+ * `ChatStore` at this component's level (see `core/chat-store.ts` for why
+ * it can't be `providedIn: 'root'`).
+ *
+ * The API port is bound to the real backend here so the store and all child
+ * components use the same implementation.
+ */
 @Component({
   selector: 'app-chat-shell',
-  imports: [],
-  template: `<p>chat shell stub</p>`,
+  imports: [ModelPicker, ConversationList, MessageThread, Composer],
+  providers: [{ provide: CHAT_API, useClass: RealChatApi }, ChatStore],
+  templateUrl: './chat-shell.html',
+  styleUrl: './chat-shell.scss',
 })
-export class ChatShell {}
+export class ChatShell {
+  protected readonly sidebarOpen = signal(false);
+}

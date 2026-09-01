@@ -68,6 +68,9 @@ COPY --from=build /app/apps/api/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/public ./public
+# tsc-alias rewrites @contracts/* imports to this workspace-relative path.
+# Keep the compiled contract package beside the API in the runtime image.
+COPY --from=build /app/libs/contracts/dist /app/libs/contracts/dist
 
 # node:22-alpine already ships an unprivileged "node" user/group.
 USER node

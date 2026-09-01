@@ -100,11 +100,11 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       const client = new OpencodeClient(fake.baseUrl, 'test-key');
       let caught: unknown;
       try {
-        for await (const _ of client.streamChatCompletion({
+        for await (const chunk of client.streamChatCompletion({
           model: 'glm-5.3',
           messages: [{ role: 'user', content: 'hi' }],
         })) {
-          // no-op
+          expect(chunk).toBeDefined();
         }
       } catch (err) {
         caught = err;
@@ -128,11 +128,11 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       const client = new OpencodeClient(fake.baseUrl, 'test-key');
       let caught: unknown;
       try {
-        for await (const _ of client.streamChatCompletion({
+        for await (const chunk of client.streamChatCompletion({
           model: 'glm-5.3',
           messages: [{ role: 'user', content: 'hi' }],
         })) {
-          // no-op
+          expect(chunk).toBeDefined();
         }
       } catch (err) {
         caught = err;
@@ -161,11 +161,11 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
 
     try {
       const client = new OpencodeClient(fake.baseUrl, 'secret-key');
-      for await (const _ of client.streamChatCompletion({
+      for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
       })) {
-        // no-op
+        expect(chunk).toBeDefined();
       }
       expect(capturedAuth).toBe('Bearer secret-key');
       expect(JSON.parse(capturedBody)).toEqual({

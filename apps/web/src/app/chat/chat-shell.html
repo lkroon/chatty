@@ -1,0 +1,25 @@
+<div class="shell">
+  <header class="topbar">
+    <button
+      type="button"
+      class="menu-btn"
+      aria-label="Toggle conversation list"
+      (click)="sidebarOpen.set(!sidebarOpen())"
+    >
+      ☰
+    </button>
+    <h1>opencode-chat</h1>
+    <app-model-picker />
+  </header>
+
+  <div class="body" [class.sidebar-open]="sidebarOpen()">
+    <div class="sidebar-backdrop" (click)="sidebarOpen.set(false)"></div>
+    <aside class="sidebar">
+      <app-conversation-list (activated)="sidebarOpen.set(false)" />
+    </aside>
+    <main class="main">
+      <app-message-thread />
+      <app-composer />
+    </main>
+  </div>
+</div>
