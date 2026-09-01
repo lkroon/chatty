@@ -15,7 +15,10 @@
       "@contracts": ["../../libs/contracts/dist/index"],
       "@contracts/*": ["../../libs/contracts/dist/*"]
     },
-    "incremental": true,
+    // Deliberately no "incremental": true — its .tsbuildinfo cache goes
+    // stale whenever dist/ is deleted out-of-band (e.g. nest-cli's
+    // deleteOutDir, or a manual clean), which silently produces
+    // incomplete/empty builds. Not worth the footgun at this project size.
     "skipLibCheck": true,
     "strictNullChecks": false,
     "noImplicitAny": false,
