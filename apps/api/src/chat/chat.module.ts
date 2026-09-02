@@ -26,10 +26,12 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
     { provide: CONVERSATION_STORE, useExisting: ConversationsService },
     { provide: USAGE_SERVICE, useExisting: PostgresUsageService },
     {
-      // createSearchProvider() throws at construction for an unknown
-      // SEARCH_PROVIDER — a useFactory provider runs at Nest bootstrap,
-      // so an unknown value fails app startup, not the first search
-      // (Wave 1.5 plan requirement).
+      // createSearchProvider() throws at construction for a bad provider
+      // config — a useFactory provider runs at Nest bootstrap, so that
+      // fails app startup rather than the first search (Wave 1.5 plan
+      // requirement). It only validates when WEB_SEARCH_ENABLED=true;
+      // with search off it hands back a DisabledSearchProvider, so the
+      // flag being off cannot keep the pod from booting.
       provide: TOOL_RUNTIME,
       useFactory: () => new ToolRuntimeImpl(createSearchProvider()),
     },
