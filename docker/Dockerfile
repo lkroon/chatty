@@ -68,6 +68,12 @@ COPY --from=build /app/apps/api/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/public ./public
+# The Drizzle migration files (SQL + meta/_journal.json), read at runtime by
+# dist/db/run-migrations.js as ../../drizzle relative to its own directory.
+# Not build output, so nothing else copies them: without this the migrate Job
+# dies with `Can't find meta/_journal.json file` and the database is never
+# created — which is exactly what happened on the Gate 2 kind cluster.
+COPY --from=build /app/apps/api/drizzle ./drizzle
 # tsc-alias rewrites @contracts/* imports to this workspace-relative path.
 # Keep the compiled contract package beside the API in the runtime image.
 COPY --from=build /app/libs/contracts/dist /app/libs/contracts/dist

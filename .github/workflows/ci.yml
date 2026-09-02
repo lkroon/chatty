@@ -32,3 +32,30 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Builds the real runtime image and checks the things a unit test
+      # cannot: that the files the container needs at runtime actually made
+      # it in. The migrate Job failed on the Gate 2 cluster with `Can't find
+      # meta/_journal.json file` because the Drizzle migrations were never
+      # copied out of the build stage — a defect no api test could see, since
+      # the tests run against the source tree where the folder is right there.
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: chatty:ci
+
+      - name: Runtime image carries what it needs
+        run: |
+          set -euo pipefail
+          check() {
+            docker run --rm --entrypoint sh chatty:ci -c "test -e '$1'" \
+              || { echo "::error::missing from runtime image: $1"; exit 1; }
+          }
+          check drizzle/meta/_journal.json   # migrate Job reads these
+          check dist/db/run-migrations.js    # ...with this
+          check dist/main.js                 # app entrypoint
+          check public/index.html            # Angular build served by Nest
