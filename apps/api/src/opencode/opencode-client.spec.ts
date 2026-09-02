@@ -20,19 +20,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** A promise plus the handle that settles it, for cross-task handshakes. */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
 describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
   it('streams delta chunks progressively as separate frames arrive, then a done chunk', async () => {
-    const seenAt: number[] = [];
+    // The upstream writes each frame only once the consumer has taken the
+    // previous chunk, so the handshake — not a wall-clock gap — is what proves
+    // progressive delivery. A client that buffered the whole body before
+    // yielding would never release these gates and would stall instead.
+    const consumed = [deferred(), deferred()];
     const fake = await startFakeUpstream(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       res.write(
         `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hel' } }] })}\n\n`,
       );
-      await sleep(20);
+      await consumed[0].promise;
       res.write(
         `data: ${JSON.stringify({ choices: [{ delta: { content: 'lo' } }] })}\n\n`,
       );
-      await sleep(20);
+      await consumed[1].promise;
       res.write(
         `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
       );
@@ -42,24 +53,35 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
     try {
       const client = new OpencodeClient(fake.baseUrl, 'test-key');
       const chunks: unknown[] = [];
-      for await (const chunk of client.streamChatCompletion({
-        model: 'glm-5.3',
-        messages: [{ role: 'user', content: 'hi' }],
-      })) {
-        chunks.push(chunk);
-        seenAt.push(Date.now());
-      }
+      const drain = (async () => {
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'hi' }],
+        })) {
+          chunks.push(chunk);
+          consumed[chunks.length - 1]?.resolve();
+        }
+        return 'drained' as const;
+      })();
 
+      let stallTimer: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        drain,
+        new Promise<'stalled'>((resolve) => {
+          stallTimer = setTimeout(() => resolve('stalled'), 5000);
+        }),
+      ]).finally(() => clearTimeout(stallTimer));
+
+      expect(outcome).toBe('drained');
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hel' },
         { type: 'delta', text: 'lo' },
         { type: 'done', finishReason: 'stop' },
       ]);
-      // Progressive framing, not one lump: consecutive chunks arrived
-      // measurably apart, matching the server's staggered writes.
-      expect(seenAt[1] - seenAt[0]).toBeGreaterThanOrEqual(10);
-      expect(seenAt[2] - seenAt[1]).toBeGreaterThanOrEqual(10);
     } finally {
+      // Release any gate the client never reached, so the handler can finish
+      // and the server can close even when the assertions above failed.
+      consumed.forEach((gate) => gate.resolve());
       await fake.close();
     }
   });
@@ -110,9 +132,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(OpencodeUpstreamError);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).status).toBe(
-        429,
-      );
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).status,
+      ).toBe(429);
     } finally {
       await fake.close();
     }
@@ -138,9 +160,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(OpencodeUpstreamError);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).status).toBe(
-        500,
-      );
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).status,
+      ).toBe(500);
     } finally {
       await fake.close();
     }
