@@ -18,6 +18,12 @@
 app:
   origin: http://localhost
   cookieSecure: "false"
+  # Off for the kind gate, unlike production. The pod cannot reach the host's
+  # docker-compose SearXNG, and running SearXNG in-cluster to prove a path
+  # that production does not use (production is Brave) would be testing the
+  # wrong thing. The web-search checks belong to Gate 1 against the dev
+  # server, and to Gate 3 against Brave on the real cluster.
+  webSearchEnabled: false
 
 ingress:
   host: localhost

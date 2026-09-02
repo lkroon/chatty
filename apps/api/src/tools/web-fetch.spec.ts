@@ -2,7 +2,7 @@ import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import * as urlGuardModule from './url-guard';
 import { fetchPage } from './web-fetch';
-import { ToolBudget, FETCH_MAX_BYTES } from './tool-budget';
+import { ToolBudget, FETCH_MAX_BYTES, MAX_FETCHES_PER_EXCHANGE } from './tool-budget';
 
 async function startFakeServer(
   handler: http.RequestListener,
@@ -138,11 +138,15 @@ describe('fetchPage', () => {
     const budget = new ToolBudget();
 
     try {
-      await fetchPage(server.baseUrl, budget, new AbortController().signal);
-      await fetchPage(server.baseUrl, budget, new AbortController().signal);
-      const third = await fetchPage(server.baseUrl, budget, new AbortController().signal);
-      expect(third.status).toBe('failed');
-      expect(third.content).toContain('Tool budget exhausted for this message');
+      // Drive the budget off its own constant rather than a literal, so
+      // retuning MAX_FETCHES_PER_EXCHANGE doesn't silently break this.
+      for (let i = 0; i < MAX_FETCHES_PER_EXCHANGE; i++) {
+        const allowed = await fetchPage(server.baseUrl, budget, new AbortController().signal);
+        expect(allowed.status).toBe('done');
+      }
+      const overBudget = await fetchPage(server.baseUrl, budget, new AbortController().signal);
+      expect(overBudget.status).toBe('failed');
+      expect(overBudget.content).toContain('Tool budget exhausted for this message');
     } finally {
       await server.close();
     }

