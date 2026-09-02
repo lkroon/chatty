@@ -43,6 +43,10 @@ describe('ChatStore', () => {
   let api: FakeChatApi;
 
   beforeEach(() => {
+    // Jasmine randomises spec order, and several specs here seed
+    // localStorage. Without this, whether a spec sees a stored model id
+    // depends on what ran before it.
+    localStorage.removeItem('oc-model');
     api = new FakeChatApi();
     TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
@@ -63,6 +67,42 @@ describe('ChatStore', () => {
     localStorage.setItem('oc-model', 'model-does-not-exist');
     TestBed.resetTestingModule();
     api = new FakeChatApi();
+    TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+    });
+    store = TestBed.inject(ChatStore);
+    expect(store.selectedModelId()).toBe('model-a');
+    localStorage.removeItem('oc-model');
+  });
+
+  it('prefers glm-5.3-flash over list order when nothing is stored', () => {
+    TestBed.resetTestingModule();
+    // The outer beforeEach already built a store, and building one *writes*
+    // the resolved id back to localStorage. Clear it after that, or this spec
+    // is really testing the stored-preference path.
+    localStorage.removeItem('oc-model');
+    api = new FakeChatApi();
+    // Deliberately not first: models[0] is what the old behaviour picked, and
+    // upstream list order is nobody's decision.
+    api.models = [
+      { id: 'model-a', label: 'Model A', family: 'fam' },
+      { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
+    ];
+    TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+    });
+    store = TestBed.inject(ChatStore);
+    expect(store.selectedModelId()).toBe('glm-5.3-flash');
+  });
+
+  it('lets a stored choice beat the preferred default', () => {
+    localStorage.setItem('oc-model', 'model-a');
+    TestBed.resetTestingModule();
+    api = new FakeChatApi();
+    api.models = [
+      { id: 'model-a', label: 'Model A', family: 'fam' },
+      { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
+    ];
     TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
     });

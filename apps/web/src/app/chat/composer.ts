@@ -14,6 +14,7 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
         name="message"
         rows="1"
         placeholder="Message Chatty…"
+        enterkeyhint="send"
         [value]="draft()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
@@ -104,12 +105,6 @@ export class Composer {
   protected readonly draft = signal('');
   private readonly textareaEl = viewChild.required<ElementRef<HTMLTextAreaElement>>('textareaEl');
 
-  /** Desktop (fine pointer, e.g. mouse/trackpad): Enter sends, Shift+Enter inserts a newline.
-   *  Touch (coarse pointer): Enter inserts a newline; sending happens only via the button. */
-  private isFinePointer(): boolean {
-    return typeof matchMedia === 'function' ? matchMedia('(pointer: fine)').matches : true;
-  }
-
   protected onInput(event: Event): void {
     const el = event.target as HTMLTextAreaElement;
     this.draft.set(el.value);
@@ -117,11 +112,19 @@ export class Composer {
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
   }
 
+  /**
+   * Enter sends, everywhere. Shift+Enter still inserts a newline, which is
+   * what an attached keyboard uses; on a phone's on-screen keyboard there is
+   * no practical way to type one, so multi-line input there means pasting.
+   * That is the deliberate trade: sending is the thing done on every message,
+   * and reaching for the button each time was the friction worth removing.
+   *
+   * `isComposing` is not optional. An IME (or iOS predictive text mid-word)
+   * fires Enter to accept a candidate, and sending there would truncate the
+   * word the user was still typing.
+   */
   protected onKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
-      return;
-    }
-    if (!this.isFinePointer()) {
       return;
     }
     event.preventDefault();

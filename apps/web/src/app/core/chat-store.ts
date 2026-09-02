@@ -7,6 +7,18 @@ import { CHAT_API } from './chat-api';
 const MODEL_STORAGE_KEY = 'oc-model';
 
 /**
+ * What a first-time visitor gets, before they have ever picked a model.
+ * Without it the default was models[0] — whatever the upstream /models call
+ * happened to list first, which is nobody's decision and changes when the
+ * provider reorders its catalogue.
+ *
+ * Only a preference: if the id is not in the live list it falls through to
+ * the first available model, so a retired id degrades instead of breaking.
+ * Once the user picks anything, their stored choice wins for good.
+ */
+const PREFERRED_DEFAULT_MODEL_ID = 'glm-5.3-flash';
+
+/**
  * Signal-based store for the chat feature: conversation list, active
  * conversation's messages, and the in-flight streaming buffer. Provided at
  * the `ChatShell` component level (not `providedIn: 'root'`) so it shares
@@ -48,7 +60,12 @@ export class ChatStore {
       next: (models) => {
         this.models.set(models);
         const stored = readLocalStorage(MODEL_STORAGE_KEY);
-        const next = stored && models.some((m) => m.id === stored) ? stored : (models[0]?.id ?? '');
+        const has = (id: string | null) => !!id && models.some((m) => m.id === id);
+        const next = has(stored)
+          ? stored!
+          : has(PREFERRED_DEFAULT_MODEL_ID)
+            ? PREFERRED_DEFAULT_MODEL_ID
+            : (models[0]?.id ?? '');
         this.selectedModelId.set(next);
         if (next) {
           writeLocalStorage(MODEL_STORAGE_KEY, next);

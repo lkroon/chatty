@@ -82,7 +82,7 @@ describe('Composer', () => {
     expect(store.send).not.toHaveBeenCalled();
   });
 
-  it('does not send on Enter with a coarse pointer (touch) — button-only', () => {
+  it('sends on Enter with a coarse pointer (touch) too', () => {
     setPointer('coarse');
     const textarea: HTMLTextAreaElement = fixture.nativeElement.querySelector('textarea');
     textarea.value = 'hello';
@@ -92,7 +92,28 @@ describe('Composer', () => {
     const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
     textarea.dispatchEvent(event);
 
+    expect(store.send).toHaveBeenCalledWith('hello');
+  });
+
+  it('does not send mid-composition — an IME Enter accepts a candidate', () => {
+    setPointer('coarse');
+    const textarea: HTMLTextAreaElement = fixture.nativeElement.querySelector('textarea');
+    textarea.value = 'hel';
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    // KeyboardEvent init has no isComposing in every browser's typings, so
+    // set it on the instance the way the platform would.
+    const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    Object.defineProperty(event, 'isComposing', { value: true });
+    textarea.dispatchEvent(event);
+
     expect(store.send).not.toHaveBeenCalled();
+  });
+
+  it('labels the on-screen keyboard return key as send', () => {
+    const textarea: HTMLTextAreaElement = fixture.nativeElement.querySelector('textarea');
+    expect(textarea.getAttribute('enterkeyhint')).toBe('send');
   });
 
   it('sends via the submit button regardless of pointer type', () => {
