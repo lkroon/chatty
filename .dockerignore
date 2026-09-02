@@ -1,0 +1,31 @@
+# Reinstalled fresh inside the image; host node_modules would also drag
+# in host-architecture native binaries and bloat the build context.
+node_modules/
+**/node_modules/
+
+.git/
+.github/
+
+# Not part of this image (Wave 1 workstream G, Kubernetes deploy).
+charts/
+argocd/
+k8s/
+
+# Rebuilt from source inside the image; excluding pre-existing local
+# build output avoids stale artifacts leaking into COPY . . below.
+**/dist/
+**/coverage/
+apps/web/.angular/
+
+# Env files / secrets — never shipped in the image.
+.env
+.env.*
+
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+docker-compose*.yml
+README.md
+**/README.md

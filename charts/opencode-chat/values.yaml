@@ -1,0 +1,66 @@
+# Bumped by the release workflow on every tag (mirrors lkroon/frameworks'
+# imageRegistry/imageTag pattern). Single image: the api container also
+# serves the built Angular web app (see apps/api/src/main.ts's
+# @nestjs/serve-static usage) — there is no separate web Deployment.
+imageRegistry: ghcr.io/lkroon
+imageTag: v0.1.0
+
+app:
+  # Origin whose /auth/google/callback is registered with Google. No
+  # trailing slash. Also used as the cookie-secure default's paired value.
+  origin: http://localhost
+  # String "true"/"false" (env vars are always strings). Set to "false"
+  # only for local plain-http.
+  cookieSecure: "true"
+  # CSV of full email addresses, case-insensitive exact match. Empty
+  # string means nobody is allowed in — set this before a real deploy.
+  allowedEmails: ""
+  dailyMessageLimit: 200
+  # e.g. https://opencode.ai/zen/go/v1 — unverified, see .env.example.
+  opencodeBaseUrl: ""
+  # CSV of bare model ids. Empty = /api/models serves only the cached
+  # upstream list.
+  opencodeModels: ""
+
+# Name of the Secret created out-of-band by the operator (kubectl, not this
+# chart) with keys OPENCODE_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+# SESSION_SECRET. See k8s/cluster-up.sh.
+authSecretName: opencode-chat-auth
+
+db:
+  # Dev-grade credentials; move to sealed-secrets/SOPS before a public deploy
+  user: app
+  password: app
+  database: appdb
+  storage: 1Gi
+
+ingress:
+  className: nginx
+  host: opencode-chat.localtest.me
+  tls:
+    # Flip to true and set secretName (pre-existing TLS Secret) and/or
+    # clusterIssuer (cert-manager annotation) once a real cert is in play.
+    # Left disabled so the chart works out of the box on a plain-http kind
+    # cluster.
+    enabled: false
+    secretName: ""
+    clusterIssuer: ""
+
+resources:
+  api:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+  postgres:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 384Mi
+
+migration:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300

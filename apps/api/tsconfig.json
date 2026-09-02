@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    "paths": {
+      "@contracts": ["../../libs/contracts/dist/index"],
+      "@contracts/*": ["../../libs/contracts/dist/*"]
+    },
+    // Explicit allowlist matching this package's own @types/* devDependencies.
+    // Without this, TS auto-includes every @types/* package found anywhere
+    // under the (npm-workspaces-hoisted) node_modules/@types, including
+    // apps/web's @types/jasmine — whose global `expect`/`describe` clash
+    // with @types/jest's and break ts-jest matcher typings (e.g.
+    // `expect.objectContaining`, `.toHaveLength`) with no runtime effect,
+    // just confusing type errors in *.spec.ts.
+    "types": [
+      "connect-pg-simple",
+      "express",
+      "express-session",
+      "jest",
+      "node",
+      "passport-google-oauth20",
+      "pg",
+      "supertest"
+    ],
+    // Deliberately no "incremental": true — its .tsbuildinfo cache goes
+    // stale whenever dist/ is deleted out-of-band (e.g. nest-cli's
+    // deleteOutDir, or a manual clean), which silently produces
+    // incomplete/empty builds. Not worth the footgun at this project size.
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false
+  },
+  "exclude": ["node_modules", "test", "dist"]
+}

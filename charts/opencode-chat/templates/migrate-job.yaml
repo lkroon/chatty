@@ -1,0 +1,64 @@
+# Runs the Drizzle migrations (apps/api/src/db/run-migrations.ts, compiled
+# to dist/db/run-migrations.js) against the chart's own Postgres, using the
+# same image as the app Deployment.
+#
+# helm.sh/hook is post-install,pre-upgrade — deliberately NOT pre-install.
+# Argo CD maps pre-install to PreSync, which on a fresh cluster runs before
+# the Postgres StatefulSet in this same chart exists, so the migration Job
+# would have nothing to connect to and fail the whole first sync. Both
+# post-install and pre-upgrade run after the StatefulSet manifest has been
+# applied (post-install: same Sync wave, after creation; pre-upgrade: prior
+# releases already have Postgres running).
+#
+# Both helm.sh/hook-delete-policy and argocd.argoproj.io/hook-delete-policy
+# are set below because it could not be verified in this session which
+# annotation Argo CD's currently-deployed version honors for a Helm hook
+# resource — empirically verify at the first real sync (not this
+# workstream's gate; see report).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: opencode-chat-migrate
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+    # Deliberately no argocd.argoproj.io/hook annotation here: Argo CD's
+    # own Helm-hook mapping (post-install -> PostSync, pre-upgrade ->
+    # PreSync) already gives the right phase per event, and pinning a
+    # single static phase here would collapse that distinction.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app: opencode-chat-migrate
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h db -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "waiting for db..."
+                sleep 2
+              done
+          envFrom:
+            - secretRef:
+                name: db-credentials
+      containers:
+        - name: migrate
+          image: {{ .Values.imageRegistry }}/opencode-chat:{{ .Values.imageTag }}
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist/db/run-migrations.js"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DATABASE_URL

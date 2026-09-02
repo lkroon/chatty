@@ -1,0 +1,25 @@
+# Apply once by hand (kubectl apply -f) after installing Argo CD;
+# from then on Argo CD keeps the cluster in sync with this repo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opencode-chat
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/lkroon/chatty.git
+    targetRevision: main
+    path: charts/opencode-chat
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opencode-chat
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
