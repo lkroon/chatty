@@ -54,8 +54,25 @@ kubectl --context "$CTX" get deploy -n kube-system metrics-server >/dev/null 2>&
 # 4. App namespace + the one secret that never enters git
 kubectl --context "$CTX" create namespace chatty --dry-run=client -o yaml \
   | kubectl --context "$CTX" apply -f -
+# Only the keys the app actually reads from the Secret. The dev .env also
+# carries DATABASE_URL, APP_ORIGIN and friends; those are chart values in the
+# cluster (and `env:` beats `envFrom:` in the pod spec, so they would be dead
+# weight at best), and a dev DATABASE_URL sitting in a cluster Secret is a
+# misleading thing to leave lying around. BRAVE_SEARCH_API_KEY is optional:
+# only needed when app.searchProvider=brave with web search on.
+SECRET_KEYS=(OPENCODE_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET SESSION_SECRET BRAVE_SEARCH_API_KEY)
+SECRET_ARGS=()
+for key in "${SECRET_KEYS[@]}"; do
+  value=$(grep -E "^${key}=" .env | tail -n1 | cut -d= -f2-) || true
+  if [[ -n "${value}" ]]; then
+    SECRET_ARGS+=(--from-literal="${key}=${value}")
+  elif [[ "${key}" != "BRAVE_SEARCH_API_KEY" ]]; then
+    echo "ERROR: ${key} missing or empty in .env" >&2
+    exit 1
+  fi
+done
 kubectl --context "$CTX" -n chatty create secret generic chatty-auth \
-  --from-env-file=.env --dry-run=client -o yaml \
+  "${SECRET_ARGS[@]}" --dry-run=client -o yaml \
   | kubectl --context "$CTX" apply -f -
 
 # 5. Argo CD (UI at http://argocd.localtest.me, user admin)
