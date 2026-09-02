@@ -44,7 +44,19 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # Check out the default branch, NOT the tag. The default checkout for a
+      # tag push lands on a detached HEAD at the tagged commit, and pushing
+      # that to main fails outright the moment main has moved on since the
+      # tag — which is exactly what happened on v0.1.0:
+      #
+      #   ! [rejected]  HEAD -> main (fetch first)
+      #
+      # The image was built and pushed; only the imageTag bump was lost, so
+      # Argo CD kept syncing the previous release and the tag looked
+      # delivered when it was not.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       # Wave 1 workstream G owns charts/chatty/values.yaml. This
       # step assumes it exists with a top-level `imageTag:` key by the time
@@ -75,4 +87,16 @@ jobs:
             exit 0
           fi
           git commit -m "chore(release): bump imageTag to ${{ github.ref_name }} [skip ci]"
-          git push origin HEAD:${{ github.event.repository.default_branch }}
+          # A merge landing on the default branch between checkout and push
+          # is normal, not exceptional. Rebase onto it and retry rather than
+          # failing a release for losing a race over one line of YAML.
+          BRANCH="${{ github.event.repository.default_branch }}"
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${BRANCH}"; then
+              exit 0
+            fi
+            echo "push rejected (attempt ${attempt}/3), rebasing onto ${BRANCH}"
+            git pull --rebase origin "$BRANCH"
+          done
+          echo "::error::could not push the imageTag bump after 3 attempts"
+          exit 1
