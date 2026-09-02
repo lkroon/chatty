@@ -2,31 +2,40 @@
 # to dist/db/run-migrations.js) against the chart's own Postgres, using the
 # same image as the app Deployment.
 #
-# helm.sh/hook is post-install,pre-upgrade — deliberately NOT pre-install.
-# Argo CD maps pre-install to PreSync, which on a fresh cluster runs before
-# the Postgres StatefulSet in this same chart exists, so the migration Job
-# would have nothing to connect to and fail the whole first sync. Both
-# post-install and pre-upgrade run after the StatefulSet manifest has been
-# applied (post-install: same Sync wave, after creation; pre-upgrade: prior
-# releases already have Postgres running).
+# Every annotation below has to agree on one phase: PostSync.
 #
-# Both helm.sh/hook-delete-policy and argocd.argoproj.io/hook-delete-policy
-# are set below because it could not be verified in this session which
-# annotation Argo CD's currently-deployed version honors for a Helm hook
-# resource — empirically verify at the first real sync (not this
-# workstream's gate; see report).
+# The earlier post-install,pre-upgrade pairing was wrong, and Gate 2's
+# fresh-install check caught it. Argo CD registers a Helm hook under *every*
+# phase its annotations map to, so pre-upgrade registered this Job as a
+# PreSync hook too — and PreSync is the first thing that runs on a fresh
+# sync, before the Postgres StatefulSet and its db-credentials Secret in
+# this same chart exist. Observed on kind: `Init:CreateContainerConfigError,
+# secret "db-credentials" not found`, with the whole first sync stuck behind
+# it.
+#
+# post-upgrade maps to PostSync exactly as post-install does, so install and
+# upgrade now take the same path and nothing depends on which annotation
+# Argo CD's version gives precedence to. The argocd.argoproj.io/hook
+# annotation states the same phase directly, belt and braces.
+#
+# The cost is that migrations run *after* the new pods are already serving,
+# so there is a brief window where new code meets the old schema. For an
+# append-only single-user app with additive Drizzle migrations that is the
+# cheaper failure than a first sync that cannot complete at all. If a
+# destructive migration ever lands, it needs the expand/contract treatment
+# rather than a phase change here.
+#
+# Both delete-policy annotations are set because it is not verified which
+# one this Argo CD version honors for a Helm hook resource.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: chatty-migrate
   annotations:
-    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-weight: "0"
     helm.sh/hook-delete-policy: before-hook-creation
-    # Deliberately no argocd.argoproj.io/hook annotation here: Argo CD's
-    # own Helm-hook mapping (post-install -> PostSync, pre-upgrade ->
-    # PreSync) already gives the right phase per event, and pinning a
-    # single static phase here would collapse that distinction.
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: {{ .Values.migration.backoffLimit }}
