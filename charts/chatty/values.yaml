@@ -3,7 +3,7 @@
 # serves the built Angular web app (see apps/api/src/main.ts's
 # @nestjs/serve-static usage) — there is no separate web Deployment.
 imageRegistry: ghcr.io/lkroon
-imageTag: "v0.1.0-rc.1"
+imageTag: "v0.1.0-rc.2"
 
 app:
   # Origin whose /auth/google/callback is registered with Google. No
