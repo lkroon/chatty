@@ -1,0 +1,31 @@
+# The Gate 2 (local kind) variant of argocd/chatty.yaml: same chart, same
+# repo, with values-kind.yaml layered on top for the localtest.me host and
+# plain-http cookie. k8s/cluster-up.sh applies this one; never apply it to
+# the Hetzner cluster.
+#
+# Note targetRevision below: Argo CD pulls the chart from GitHub, not from
+# your working tree, so chart changes must be pushed before a sync shows them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chatty-kind
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/lkroon/chatty.git
+    targetRevision: main
+    path: charts/chatty
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-kind.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chatty
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

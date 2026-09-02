@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: opencode-chat
+  name: chatty
 spec:
   # Explicit (unlike the frameworks source chart, which omits this because
   # its HPA owns the count): this chart has no HPA, so Helm/K8s defaults
@@ -10,15 +10,15 @@ spec:
   revisionHistoryLimit: 1
   selector:
     matchLabels:
-      app: opencode-chat
+      app: chatty
   template:
     metadata:
       labels:
-        app: opencode-chat
+        app: chatty
     spec:
       containers:
-        - name: opencode-chat
-          image: {{ .Values.imageRegistry }}/opencode-chat:{{ .Values.imageTag }}
+        - name: chatty
+          image: {{ .Values.imageRegistry }}/chatty:{{ .Values.imageTag }}
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
@@ -93,10 +93,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: opencode-chat
+  name: chatty
 spec:
   selector:
-    app: opencode-chat
+    app: chatty
   ports:
     - name: http
       port: 80

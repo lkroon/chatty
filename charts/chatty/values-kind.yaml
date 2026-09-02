@@ -1,0 +1,19 @@
+# Gate 2 overrides for the local kind cluster. Layered on top of values.yaml
+# by argocd/chatty-kind.yaml, which k8s/cluster-up.sh applies instead of the
+# production Application — so proving the chart locally never means editing
+# the values Argo CD syncs to Hetzner.
+#
+# Three things differ from production, and only these three:
+#   - the host is a localtest.me name that resolves to 127.0.0.1
+#   - APP_ORIGIN is http://localhost, which is already an authorized redirect
+#     URI on the existing Google client (no console change to run this gate)
+#   - the session cookie drops `secure`: localtest.me is not a browser-trusted
+#     secure origin, so a secure cookie is silently discarded there
+app:
+  origin: http://localhost
+  cookieSecure: "false"
+
+ingress:
+  host: chatty.localtest.me
+  tls:
+    enabled: false

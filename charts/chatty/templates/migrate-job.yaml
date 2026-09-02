@@ -18,7 +18,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: opencode-chat-migrate
+  name: chatty-migrate
   annotations:
     helm.sh/hook: post-install,pre-upgrade
     helm.sh/hook-weight: "0"
@@ -34,7 +34,7 @@ spec:
   template:
     metadata:
       labels:
-        app: opencode-chat-migrate
+        app: chatty-migrate
     spec:
       restartPolicy: Never
       initContainers:
@@ -53,7 +53,7 @@ spec:
                 name: db-credentials
       containers:
         - name: migrate
-          image: {{ .Values.imageRegistry }}/opencode-chat:{{ .Values.imageTag }}
+          image: {{ .Values.imageRegistry }}/chatty:{{ .Values.imageTag }}
           imagePullPolicy: IfNotPresent
           command: ["node", "dist/db/run-migrations.js"]
           env:

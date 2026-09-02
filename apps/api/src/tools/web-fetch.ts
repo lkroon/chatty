@@ -16,7 +16,7 @@ function userAgent(): string {
   } catch {
     // Malformed APP_ORIGIN — fall back rather than let a User-Agent header build crash a fetch.
   }
-  return `opencode-chat/1.0 (+https://${host})`;
+  return `chatty/1.0 (+https://${host})`;
 }
 
 const ACCEPTED_CONTENT_TYPES = [

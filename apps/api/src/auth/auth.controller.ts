@@ -5,7 +5,7 @@ import { AuthenticatedUser } from './google.strategy';
 
 // No trailing slash per the task brief's APP_ORIGIN contract.
 const APP_ORIGIN = process.env.APP_ORIGIN ?? '';
-const SESSION_COOKIE_NAME = 'opencode-chat.sid';
+const SESSION_COOKIE_NAME = 'chatty.sid';
 
 // Registered at @Controller('auth') -> resolves to /auth/google,
 // /auth/google/callback, /auth/logout, all WITHOUT the /api prefix

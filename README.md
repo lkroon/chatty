@@ -1,4 +1,4 @@
-# opencode-chat
+# Chatty
 
 A bare-bones, single-user (plus allowlist) chat web app that proxies prompts
 to the OpenCode Go subscription. NestJS backend, Angular frontend, installed
@@ -13,15 +13,15 @@ on iOS as a home-screen web app.
 ### Monorepo, not a repo split
 
 Unlike a previous project on this cluster that split app code and Helm chart
-across two repos, **opencode-chat is a single monorepo**: `apps/`, `libs/`,
-`charts/opencode-chat/`, and `argocd/opencode-chat.yaml` all live here
+across two repos, **Chatty is a single monorepo**: `apps/`, `libs/`,
+`charts/chatty/`, and `argocd/chatty.yaml` all live here
 together. Two consequences fall out of that if you're used to the split
 pattern:
 
-- Argo CD's `Application` points `path: charts/opencode-chat` at this repo,
+- Argo CD's `Application` points `path: charts/chatty` at this repo,
   not a separate charts repo.
 - The release workflow commits the new `imageTag` back into this same repo
-  (`charts/opencode-chat/values.yaml`). That commit carries `[skip ci]` so it
+  (`charts/chatty/values.yaml`). That commit carries `[skip ci]` so it
   doesn't retrigger the CI workflow.
 
 ## Local dev
@@ -29,7 +29,7 @@ pattern:
 Five commands, Postgres in Docker, everything else on the host:
 
 ```sh
-git clone <repo-url> && cd opencode-chat
+git clone <repo-url> && cd chatty
 cp .env.example .env   # fill in OPENCODE_API_KEY, GOOGLE_CLIENT_ID/SECRET, SESSION_SECRET
 npm install
 docker compose -f docker-compose.dev.yml up -d \
@@ -71,14 +71,14 @@ npm run format  # prettier --write across apps/ and libs/
 ## Repo layout
 
 ```
-opencode-chat/
+chatty/
 ├─ apps/
 │  ├─ api/                  # NestJS 11, Express adapter
 │  └─ web/                  # Angular 20, standalone components, signals
 ├─ libs/
 │  └─ contracts/            # shared DTOs + SSE event types (source of truth)
-├─ charts/opencode-chat/    # Helm chart
-├─ argocd/opencode-chat.yaml
+├─ charts/chatty/           # Helm chart
+├─ argocd/chatty.yaml
 ├─ k8s/                     # local kind cluster bootstrap
 ├─ docker/Dockerfile        # multi-stage, single runtime image
 ├─ .github/workflows/       # ci.yml, release.yml

@@ -8,16 +8,16 @@ imageTag: v0.1.0
 app:
   # Origin whose /auth/google/callback is registered with Google. No
   # trailing slash. Also used as the cookie-secure default's paired value.
-  origin: http://localhost
+  origin: https://chat.lkroon.nl
   # String "true"/"false" (env vars are always strings). Set to "false"
   # only for local plain-http.
   cookieSecure: "true"
   # CSV of full email addresses, case-insensitive exact match. Empty
   # string means nobody is allowed in — set this before a real deploy.
-  allowedEmails: ""
+  allowedEmails: "luckroon92@gmail.com"
   dailyMessageLimit: 200
   # e.g. https://opencode.ai/zen/go/v1 — verified 2026-09-02, see .env.example.
-  opencodeBaseUrl: ""
+  opencodeBaseUrl: "https://opencode.ai/zen/go/v1"
   # CSV of bare model ids. Empty = /api/models serves only the cached
   # upstream list.
   opencodeModels: ""
@@ -41,7 +41,7 @@ app:
 # SESSION_SECRET, plus BRAVE_SEARCH_API_KEY when app.searchProvider=brave
 # (omit it entirely for searxng — envFrom tolerates its absence, the
 # provider adapter does not). See k8s/cluster-up.sh.
-authSecretName: opencode-chat-auth
+authSecretName: chatty-auth
 
 db:
   # Dev-grade credentials; move to sealed-secrets/SOPS before a public deploy
@@ -52,15 +52,16 @@ db:
 
 ingress:
   className: nginx
-  host: opencode-chat.localtest.me
+  host: chat.lkroon.nl
   tls:
-    # Flip to true and set secretName (pre-existing TLS Secret) and/or
-    # clusterIssuer (cert-manager annotation) once a real cert is in play.
-    # Left disabled so the chart works out of the box on a plain-http kind
-    # cluster.
-    enabled: false
-    secretName: ""
-    clusterIssuer: ""
+    # Public host terminates TLS at the ingress with a cert-manager-issued
+    # Let's Encrypt cert. The ClusterIssuer named here must already exist on
+    # the cluster (see docs/deployment.md) — cert-manager is a platform
+    # prerequisite, not part of this chart. values-kind.yaml turns this off
+    # for the local plain-http kind cluster.
+    enabled: true
+    secretName: "chatty-tls"
+    clusterIssuer: "letsencrypt-prod"
 
 resources:
   api:

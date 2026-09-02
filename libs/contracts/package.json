@@ -2,7 +2,7 @@
   "name": "@contracts/source",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared DTOs and SSE event types for opencode-chat. Consumed via the '@contracts/*' TypeScript path alias — never imported through node_modules. apps/web (esbuild) resolves the alias straight to src/*.ts. apps/api (plain tsc + tsc-alias, no tsconfig-paths shim at runtime) resolves the alias to this package's own compiled dist/*.d.ts + dist/*.js, so building the api never has to pull this package's .ts source into the api's own tsc rootDir — run `npm run build` here first.",
+  "description": "Shared DTOs and SSE event types for chatty. Consumed via the '@contracts/*' TypeScript path alias — never imported through node_modules. apps/web (esbuild) resolves the alias straight to src/*.ts. apps/api (plain tsc + tsc-alias, no tsconfig-paths shim at runtime) resolves the alias to this package's own compiled dist/*.d.ts + dist/*.js, so building the api never has to pull this package's .ts source into the api's own tsc rootDir — run `npm run build` here first.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

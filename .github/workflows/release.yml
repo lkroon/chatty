@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 env:
-  IMAGE: ghcr.io/lkroon/opencode-chat
+  IMAGE: ghcr.io/lkroon/chatty
 
 # The bump-chart job below pushes a commit straight back to this repo using
 # the default GITHUB_TOKEN, so this workflow needs write access to both the
@@ -46,14 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Wave 1 workstream G owns charts/opencode-chat/values.yaml. This
+      # Wave 1 workstream G owns charts/chatty/values.yaml. This
       # step assumes it exists with a top-level `imageTag:` key by the time
       # a release tag is pushed.
       - name: Bump imageTag
         run: |
           set -euo pipefail
           TAG="${{ github.ref_name }}"
-          FILE="charts/opencode-chat/values.yaml"
+          FILE="charts/chatty/values.yaml"
           if [ ! -f "$FILE" ]; then
             echo "::error::$FILE not found — expected Wave 1 chart workstream to have created it by release time"
             exit 1
@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add charts/opencode-chat/values.yaml
+          git add charts/chatty/values.yaml
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
