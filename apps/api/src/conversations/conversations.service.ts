@@ -1,11 +1,12 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import type { ToolCallChip } from '@contracts/chat';
 import type {
   ConversationDetail,
   ConversationListItem,
   Message,
 } from '@contracts/conversation';
-import { conversations, messages } from '../db/schema';
+import { conversations, messageToolCalls, messages } from '../db/schema';
 import { DB, type Db } from '../db/tokens';
 import type {
   ConversationHistoryMessage,
@@ -28,6 +29,7 @@ export interface FinalizeAssistantMessageInput {
   assistantMessageId: string;
   content: string;
   aborted: boolean;
+  cost?: number | null;
 }
 
 const TITLE_MAX_LEN = 60;
@@ -115,6 +117,7 @@ export class ConversationsService implements ConversationStore {
       .set({
         content,
         finishReason: aborted ? 'aborted' : null,
+        upstreamCost: input.cost ?? null,
       })
       .where(eq(messages.id, assistantMessageId))
       .returning({ conversationId: messages.conversationId });
@@ -125,6 +128,32 @@ export class ConversationsService implements ConversationStore {
         .set({ updatedAt: new Date() })
         .where(eq(conversations.id, row.conversationId));
     }
+  }
+
+  /**
+   * Wave 1.5: one multi-row insert, `ordinal` = array position. A chip
+   * still 'running' means the process died mid-call — coerced to
+   * 'failed' before it's written, since 'running' isn't a storable
+   * status (see the message_tool_calls_status_check constraint).
+   * Tolerates an empty array (no-op, no query).
+   */
+  async saveToolCalls(input: {
+    assistantMessageId: string;
+    chips: ToolCallChip[];
+  }): Promise<void> {
+    if (input.chips.length === 0) {
+      return;
+    }
+    await this.db.insert(messageToolCalls).values(
+      input.chips.map((chip, ordinal) => ({
+        messageId: input.assistantMessageId,
+        ordinal,
+        name: chip.name,
+        status: chip.status === 'running' ? 'failed' : chip.status,
+        label: chip.label,
+        sources: chip.sources,
+      })),
+    );
   }
 
   async getHistory(input: {
@@ -215,19 +244,70 @@ export class ConversationsService implements ConversationStore {
       .where(eq(messages.conversationId, conversationId))
       .orderBy(messages.createdAt);
 
-    const msgs: Message[] = rows.map((row) => ({
-      id: row.id,
-      role: row.role as 'user' | 'assistant',
-      content: row.content ?? '',
-      createdAt: (row.createdAt ?? new Date()).toISOString(),
-      finishReason: row.finishReason,
-    }));
+    const toolCallsByMessageId = await this.loadToolCallsByMessageId(
+      rows.map((row) => row.id),
+    );
+
+    const msgs: Message[] = rows.map((row) => {
+      const toolCalls = toolCallsByMessageId.get(row.id);
+      return {
+        id: row.id,
+        role: row.role as 'user' | 'assistant',
+        content: row.content ?? '',
+        createdAt: (row.createdAt ?? new Date()).toISOString(),
+        finishReason: row.finishReason,
+        ...(toolCalls ? { toolCalls } : {}),
+      };
+    });
 
     return {
       id: conversation.id,
       title: conversation.title ?? '',
       messages: msgs,
     };
+  }
+
+  /** One query for the whole conversation, grouped by message id — never one query per message. */
+  private async loadToolCallsByMessageId(
+    messageIds: string[],
+  ): Promise<Map<string, ToolCallChip[]>> {
+    const byMessageId = new Map<string, ToolCallChip[]>();
+    if (messageIds.length === 0) {
+      return byMessageId;
+    }
+    const rows = await this.db
+      .select({
+        id: messageToolCalls.id,
+        messageId: messageToolCalls.messageId,
+        name: messageToolCalls.name,
+        status: messageToolCalls.status,
+        label: messageToolCalls.label,
+        sources: messageToolCalls.sources,
+      })
+      .from(messageToolCalls)
+      .where(inArray(messageToolCalls.messageId, messageIds))
+      .orderBy(asc(messageToolCalls.ordinal));
+
+    for (const row of rows) {
+      // The row's own id, not the upstream tool_calls[].id — Wave 1.5
+      // deliberately doesn't persist that (see the plan's "tool results
+      // are ephemeral" note); this only needs to be unique per chip for
+      // the UI to key/track by it.
+      const chip: ToolCallChip = {
+        callId: row.id,
+        name: row.name as ToolCallChip['name'],
+        status: row.status as ToolCallChip['status'],
+        label: row.label,
+        sources: row.sources,
+      };
+      const existing = byMessageId.get(row.messageId);
+      if (existing) {
+        existing.push(chip);
+      } else {
+        byMessageId.set(row.messageId, [chip]);
+      }
+    }
+    return byMessageId;
   }
 
   async deleteForAccount(

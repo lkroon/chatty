@@ -13,15 +13,19 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
         #textareaEl
         name="message"
         rows="1"
-        placeholder="Message opencode-chat…"
+        placeholder="Message Chatty…"
         [value]="draft()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
       ></textarea>
       @if (store.isStreaming()) {
-        <button type="button" class="stop-btn" (click)="store.cancelStreaming()">Stop</button>
+        <button type="button" class="round-btn stop-btn" (click)="store.cancelStreaming()" aria-label="Stop">
+          <span class="stop-icon"></span>
+        </button>
       } @else {
-        <button type="submit" class="send-btn" [disabled]="!draft().trim()">Send</button>
+        <button type="submit" class="round-btn send-btn" [disabled]="!draft().trim()" aria-label="Send">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 10l13-7-4 7 4 7-13-7z" /></svg>
+        </button>
       }
     </form>
   `,
@@ -30,9 +34,10 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
       display: flex;
       align-items: flex-end;
       gap: 0.5rem;
-      padding: 0.75rem;
-      padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
-      border-top: 1px solid var(--oc-border, #333);
+      padding: 0.6rem 0.85rem;
+      padding-bottom: calc(0.6rem + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--oc-border, #dcece4);
+      background: var(--oc-surface, #fff);
       box-sizing: border-box;
     }
 
@@ -41,37 +46,56 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
       resize: none;
       overflow-y: auto;
       max-height: ${MAX_TEXTAREA_HEIGHT_PX}px;
-      min-height: 2.5em;
+      min-height: 2.4em;
       font: inherit;
-      padding: 0.6em 0.75em;
-      border-radius: 8px;
-      border: 1px solid var(--oc-border, #444);
-      background: var(--oc-surface, #1e1e1e);
+      font-size: 0.9rem;
+      padding: 0.6em 1em;
+      border-radius: 20px;
+      border: 1px solid var(--oc-border, #dcece4);
+      background: var(--oc-bg, #eef6f2);
       color: inherit;
     }
 
-    .send-btn,
-    .stop-btn {
-      font: inherit;
-      padding: 0.6em 1.1em;
-      border-radius: 8px;
+    .round-btn {
+      flex-shrink: 0;
+      width: 2.5em;
+      height: 2.5em;
+      border-radius: 50%;
       border: none;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .round-btn svg {
+      width: 1em;
+      height: 1em;
     }
 
     .send-btn {
-      background: var(--oc-accent, #2b5fd9);
+      background: var(--oc-border, #dcece4);
+      color: var(--oc-text-muted, #6f7a76);
+    }
+
+    .send-btn:not(:disabled) {
+      background: var(--oc-accent, #ff6f59);
       color: #fff;
     }
 
     .send-btn:disabled {
-      opacity: 0.5;
       cursor: default;
     }
 
     .stop-btn {
-      background: var(--oc-error, #a23b3b);
-      color: #fff;
+      background: var(--oc-accent, #ff6f59);
+    }
+
+    .stop-icon {
+      width: 0.7em;
+      height: 0.7em;
+      border-radius: 2px;
+      background: #fff;
     }
   `,
 })

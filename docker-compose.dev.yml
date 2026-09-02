@@ -1,9 +1,12 @@
-# Local dev dependency: Postgres only. Run `npm run dev` at the repo
-# root against this for the api/web dev servers — the api and web apps
-# themselves run on the host, not in containers, during development.
+# Local dev dependencies: Postgres, and (Wave 1.5) SearXNG for web_search
+# when SEARCH_PROVIDER=searxng. Run `npm run dev` at the repo root against
+# this for the api/web dev servers — the api and web apps themselves run
+# on the host, not in containers, during development.
 #
-# Matches the dev DATABASE_URL documented in .env.example:
+# Matches the dev DATABASE_URL / SEARXNG_BASE_URL documented in
+# .env.example:
 #   postgresql://app:app@localhost:5432/appdb
+#   http://localhost:8080
 services:
   db:
     image: postgres:16
@@ -17,6 +20,20 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      # Read-only override enabling JSON output — see the file's own
+      # comment for why this is required (a stock SearXNG 403s ?format=json).
+      - ./docker/searxng-settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
       interval: 5s
       timeout: 5s
       retries: 5

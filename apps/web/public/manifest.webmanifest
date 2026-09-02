@@ -1,11 +1,11 @@
 {
-  "name": "opencode-chat",
+  "name": "Chatty",
   "short_name": "Chatty",
   "display": "standalone",
   "scope": "/",
   "start_url": "/",
-  "background_color": "#4338CA",
-  "theme_color": "#4338CA",
+  "background_color": "#eef6f2",
+  "theme_color": "#ff6f59",
   "icons": [
     {
       "src": "icons/icon-192.png",

@@ -1,3 +1,5 @@
+import type { ToolCallChip } from '@contracts/chat';
+
 /**
  * A<->C seam (Wave 1 stand-in): the plan has workstream A persist the
  * user message via C's real Postgres-backed store and call C's
@@ -43,12 +45,27 @@ export interface ConversationStore {
    * Called once when the stream ends, whether normally or via client
    * abort. content = full accumulated assistant text streamed so far
    * (empty string if none). aborted = true => finish_reason = 'aborted'
-   * in the DB; false => finish_reason = NULL.
+   * in the DB; false => finish_reason = NULL. cost (Wave 1.5) = the
+   * summed `Number(cost)` across every upstream round this exchange
+   * made, or null when no round reported one.
    */
   finalizeAssistantMessage(input: {
     assistantMessageId: string;
     content: string;
     aborted: boolean;
+    cost?: number | null;
+  }): Promise<void>;
+
+  /**
+   * Wave 1.5: persists the chips for one assistant message. Called once,
+   * from the `finally` of an exchange, after finalizeAssistantMessage.
+   * Chips with status 'running' are stored as 'failed' — a running chip
+   * means the process died mid-call. Must tolerate an empty array
+   * (no-op, no query).
+   */
+  saveToolCalls(input: {
+    assistantMessageId: string;
+    chips: ToolCallChip[];
   }): Promise<void>;
 }
 

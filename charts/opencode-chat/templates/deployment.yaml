@@ -42,6 +42,14 @@ spec:
               value: {{ .Values.app.opencodeBaseUrl | quote }}
             - name: OPENCODE_MODELS
               value: {{ .Values.app.opencodeModels | quote }}
+            - name: WEB_SEARCH_ENABLED
+              value: {{ .Values.app.webSearchEnabled | quote }}
+            - name: SEARCH_PROVIDER
+              value: {{ .Values.app.searchProvider | quote }}
+            - name: SEARXNG_BASE_URL
+              value: {{ .Values.app.searxngBaseUrl | quote }}
+            - name: TOOL_CAPABLE_MODELS
+              value: {{ .Values.app.toolCapableModels | quote }}
             - name: APP_VERSION
               value: {{ .Values.imageTag | quote }}
             # Downward API: pod identity, useful for logs/diagnostics

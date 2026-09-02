@@ -65,9 +65,12 @@ kubectl -n opencode-chat create secret generic opencode-chat-auth --from-env-fil
 ```
 
 with a minimal `.env` containing exactly `OPENCODE_API_KEY`,
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`. See
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, plus
+`BRAVE_SEARCH_API_KEY` if you're keeping the chart's default
+`app.searchProvider=brave` (Wave 1.5 web search). See
 [`deployment.md` → Secret creation runbook](deployment.md#secret-creation-runbook)
-— do not reuse the full dev `.env` for this.
+and [`deployment.md` → Web search](deployment.md#web-search-wave-15) — do not
+reuse the full dev `.env` for this.
 
 **7. Set `ALLOWED_EMAILS` to the real allowlist**
 

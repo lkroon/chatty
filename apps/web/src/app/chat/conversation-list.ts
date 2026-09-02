@@ -33,20 +33,25 @@ import { ChatStore } from '../core/chat-store';
       flex-direction: column;
       height: 100%;
       overflow-y: auto;
-      padding: 0.75rem;
-      gap: 0.5rem;
+      padding: 0 0.9rem 0.9rem;
+      gap: 0.9rem;
       box-sizing: border-box;
     }
 
     .new-chat {
-      font: inherit;
-      padding: 0.5em 0.75em;
-      border-radius: 6px;
-      border: 1px solid var(--oc-border, #444);
-      background: transparent;
-      color: inherit;
+      font: 700 0.82rem 'Plus Jakarta Sans', sans-serif;
+      padding: 0.7em 0.9em;
+      border-radius: 14px;
+      border: none;
+      background: var(--oc-accent, #ff6f59);
+      color: #fff;
       cursor: pointer;
-      text-align: left;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .new-chat:hover {
+      opacity: 0.92;
     }
 
     ul {
@@ -55,23 +60,29 @@ import { ChatStore } from '../core/chat-store';
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.15rem;
+      gap: 0.25rem;
     }
 
     li {
       display: flex;
       align-items: center;
-      border-radius: 6px;
+      border-radius: 14px;
     }
 
     li.active {
-      background: var(--oc-active, rgba(127, 127, 255, 0.15));
+      background: var(--oc-active, #bfe3d3);
+    }
+
+    li.active .title {
+      color: var(--oc-accent-ink, #7a2c22);
+      font-weight: 600;
     }
 
     li.empty {
       opacity: 0.6;
       padding: 0.5em;
       font-size: 0.9em;
+      color: var(--oc-text-muted, #6f7a76);
     }
 
     .title {
@@ -79,9 +90,10 @@ import { ChatStore } from '../core/chat-store';
       text-align: left;
       background: none;
       border: none;
-      color: inherit;
+      color: var(--oc-text-muted, #6f7a76);
       font: inherit;
-      padding: 0.5em;
+      font-size: 0.85rem;
+      padding: 0.7em 0.75em;
       cursor: pointer;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -92,10 +104,11 @@ import { ChatStore } from '../core/chat-store';
       background: none;
       border: none;
       color: inherit;
-      opacity: 0.6;
+      opacity: 0.45;
       cursor: pointer;
       font-size: 1.1em;
-      padding: 0.25em 0.6em;
+      padding: 0.25em 0.75em;
+      flex-shrink: 0;
     }
 
     .delete:hover {

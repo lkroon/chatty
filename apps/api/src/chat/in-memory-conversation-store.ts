@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import type { ToolCallChip } from '@contracts/chat';
 import { ConversationStore } from './conversation-store';
 
 interface StoredMessage {
@@ -7,6 +8,8 @@ interface StoredMessage {
   role: 'user' | 'assistant';
   content: string;
   finishReason: string | null;
+  cost?: number | null;
+  toolCalls?: ToolCallChip[];
 }
 
 interface StoredConversation {
@@ -86,6 +89,7 @@ export class InMemoryConversationStore implements ConversationStore {
     assistantMessageId: string;
     content: string;
     aborted: boolean;
+    cost?: number | null;
   }): Promise<void> {
     for (const conversation of this.conversations.values()) {
       const message = conversation.messages.find(
@@ -94,6 +98,27 @@ export class InMemoryConversationStore implements ConversationStore {
       if (message) {
         message.content = input.content;
         message.finishReason = input.aborted ? 'aborted' : null;
+        message.cost = input.cost ?? null;
+        return;
+      }
+    }
+  }
+
+  async saveToolCalls(input: {
+    assistantMessageId: string;
+    chips: ToolCallChip[];
+  }): Promise<void> {
+    if (input.chips.length === 0) {
+      return;
+    }
+    for (const conversation of this.conversations.values()) {
+      const message = conversation.messages.find(
+        (m) => m.id === input.assistantMessageId,
+      );
+      if (message) {
+        message.toolCalls = input.chips.map((chip) =>
+          chip.status === 'running' ? { ...chip, status: 'failed' as const } : chip,
+        );
         return;
       }
     }

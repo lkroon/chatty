@@ -2,7 +2,10 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   date,
+  index,
   integer,
+  jsonb,
+  numeric,
   pgTable,
   primaryKey,
   serial,
@@ -10,6 +13,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { ToolSource } from '@contracts/chat';
 
 // Drizzle schema. Column names/types/constraints below must stay
 // byte-for-byte identical to the frozen DDL in the Wave 1 plan — workstream
@@ -57,9 +61,44 @@ export const messages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).default(
       sql`now()`,
     ),
+    // Wave 1.5: summed `Number(cost)` from the upstream's trailing cost
+    // frame(s) across every round of the exchange that produced this
+    // (assistant) message. Null on user messages and on any exchange
+    // where the upstream never reported one. Purely additive — see
+    // message_tool_calls below for why this stays a one-way migration.
+    upstreamCost: numeric('upstream_cost', { mode: 'number' }),
   },
   (table) => [
     check('messages_role_check', sql`${table.role} in ('user','assistant')`),
+  ],
+);
+
+// Wave 1.5: the tool calls (web_search/web_fetch) an assistant message's
+// exchange made, one row per call, in `ordinal` order. Tool results
+// themselves are never stored here (or anywhere) — see the plan's "Tool
+// results are ephemeral" note; `sources` holds ToolSource[] only (title +
+// url), never page text or snippets.
+export const messageToolCalls = pgTable(
+  'message_tool_calls',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    ordinal: integer('ordinal').notNull(),
+    name: text('name').notNull(),
+    status: text('status').notNull(),
+    label: text('label').notNull(),
+    sources: jsonb('sources').$type<ToolSource[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    check('message_tool_calls_status_check', sql`${table.status} in ('done','failed')`),
+    index('message_tool_calls_message_id_idx').on(table.messageId),
   ],
 );
 

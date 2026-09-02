@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
-import type { ChatEvent, ConversationListItem, Message, Model } from '@contracts';
+import type { ChatEvent, ConversationListItem, Message, Model, ToolCallChip } from '@contracts';
 
 import { CHAT_API } from './chat-api';
 
@@ -28,6 +28,10 @@ export class ChatStore {
   readonly messages = signal<Message[]>([]);
   readonly streamingText = signal('');
   readonly isStreaming = signal(false);
+  /** Chips for the tool calls made so far this exchange, in call order. */
+  readonly streamingToolCalls = signal<ToolCallChip[]>([]);
+  /** True while the model's reasoning is streaming and no visible text has arrived yet. */
+  readonly streamingThinking = signal(false);
 
   readonly error = signal<string | null>(null);
 
@@ -122,6 +126,8 @@ export class ChatStore {
     };
     this.messages.update((msgs) => [...msgs, userMessage]);
     this.streamingText.set('');
+    this.streamingToolCalls.set([]);
+    this.streamingThinking.set(false);
     this.isStreaming.set(true);
     this.pendingMessageId = null;
 
@@ -149,6 +155,8 @@ export class ChatStore {
     this.streamSub?.unsubscribe();
     this.isStreaming.set(false);
     this.streamingText.set('');
+    this.streamingToolCalls.set([]);
+    this.streamingThinking.set(false);
   }
 
   private handleEvent(event: ChatEvent): void {
@@ -164,17 +172,36 @@ export class ChatStore {
       }
       case 'delta':
         this.streamingText.update((text) => text + event.text);
+        this.streamingThinking.set(false);
+        break;
+      case 'thinking':
+        this.streamingThinking.set(true);
+        break;
+      case 'tool':
+        this.streamingToolCalls.update((chips) => {
+          const index = chips.findIndex((c) => c.callId === event.chip.callId);
+          if (index === -1) {
+            return [...chips, event.chip];
+          }
+          const next = [...chips];
+          next[index] = event.chip;
+          return next;
+        });
         break;
       case 'done': {
+        const toolCalls = this.streamingToolCalls();
         const assistantMessage: Message = {
           id: this.pendingMessageId ?? `local-${Date.now()}`,
           role: 'assistant',
           content: this.streamingText(),
           createdAt: new Date().toISOString(),
           finishReason: event.finishReason,
+          ...(toolCalls.length > 0 ? { toolCalls } : {}),
         };
         this.messages.update((msgs) => [...msgs, assistantMessage]);
         this.streamingText.set('');
+        this.streamingToolCalls.set([]);
+        this.streamingThinking.set(false);
         this.isStreaming.set(false);
         this.loadConversations();
         break;
@@ -182,7 +209,12 @@ export class ChatStore {
       case 'error':
         this.isStreaming.set(false);
         this.streamingText.set('');
+        this.streamingToolCalls.set([]);
+        this.streamingThinking.set(false);
         this.error.set(event.message);
+        break;
+      default:
+        // Unknown future event type — ignored, not thrown on.
         break;
     }
   }

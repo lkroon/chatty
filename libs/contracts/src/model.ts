@@ -10,6 +10,13 @@ export interface Model {
   id: string;
   label: string;
   family: string;
+  /**
+   * Wave 1.5: true when this model may currently receive the `web_search`/
+   * `web_fetch` tools (WEB_SEARCH_ENABLED and the id is in
+   * TOOL_CAPABLE_MODELS). Absent/false everywhere tools are off — never a
+   * per-model capability claim independent of the current server config.
+   */
+  toolCapable?: boolean;
 }
 
 /**

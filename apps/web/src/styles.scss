@@ -1,10 +1,30 @@
 /* Global styles. Kept minimal — this is a bare-bones app, not a design system. */
 
 :root {
-  --color-primary: #4338ca; /* indigo-700, matches manifest/theme-color */
-  --color-bg: #ffffff;
-  --color-text: #111111;
-  --color-text-muted: #666666;
+  /* Chatty Bubbles palette — mint + coral, matches manifest/theme-color.
+     Component-level --oc-* tokens below are what chat-shell, composer,
+     message-bubble etc. actually read; --color-* are the app-shell-level
+     ones (login screen, <body> background) that sit outside chat-shell. */
+  --color-primary: #ff6f59; /* coral */
+  --color-bg: #eef6f2; /* pale mint */
+  --color-surface: #ffffff;
+  --color-border: #dcece4;
+  --color-text: #23262b;
+  --color-text-muted: #6f7a76;
+
+  --oc-bg: #eef6f2;
+  --oc-surface: #ffffff;
+  --oc-border: #dcece4;
+  --oc-text: #23262b;
+  --oc-text-muted: #6f7a76;
+  --oc-accent: #ff6f59; /* coral */
+  --oc-accent-ink: #7a2c22; /* coral text-on-light, e.g. the wordmark */
+  --oc-mint: #bfe3d3;
+  --oc-yellow: #f7b733;
+  --oc-user-bubble: #ff6f59;
+  --oc-assistant-bubble: #ffffff;
+  --oc-active: #bfe3d3;
+  --oc-error: #d64545;
   color-scheme: light;
 }
 
@@ -17,6 +37,10 @@
 html,
 body {
   height: 100%;
+  /* Also on <html>, not just <body>: iOS Safari's rubber-band overscroll
+     can reveal the html background past the body's edge, and this app is
+     installed as an iOS home-screen PWA. */
+  background: var(--color-bg);
 }
 
 body {
@@ -24,6 +48,7 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family:
+    'Plus Jakarta Sans',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',

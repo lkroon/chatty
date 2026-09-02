@@ -13,12 +13,20 @@
  * needs additional fields, extend this interface rather than working
  * around it.
  */
+import type { ToolCallChip } from './chat';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
   finishReason: string | null;
+  /**
+   * Wave 1.5: the tool calls the assistant made while producing this
+   * message, in `ordinal` order. Absent (not an empty array) for a
+   * message with no tool calls, and never present on a `user` message.
+   */
+  toolCalls?: ToolCallChip[];
 }
 
 /** One row of `GET /api/conversations`. */
