@@ -1,5 +1,6 @@
 import {
   BraveSearchProvider,
+  DisabledSearchProvider,
   SearxngSearchProvider,
   createSearchProvider,
   formatSearchResults,
@@ -96,28 +97,47 @@ describe('BraveSearchProvider', () => {
 });
 
 describe('createSearchProvider', () => {
+  const enabled = (extra: Record<string, string> = {}) =>
+    ({ WEB_SEARCH_ENABLED: 'true', ...extra }) as NodeJS.ProcessEnv;
+
   it('defaults to searxng', () => {
-    expect(createSearchProvider({} as NodeJS.ProcessEnv)).toBeInstanceOf(SearxngSearchProvider);
+    expect(createSearchProvider(enabled())).toBeInstanceOf(SearxngSearchProvider);
   });
 
   it('builds brave when SEARCH_PROVIDER=brave and a key is set', () => {
     expect(
-      createSearchProvider({
-        SEARCH_PROVIDER: 'brave',
-        BRAVE_SEARCH_API_KEY: 'k',
-      } as NodeJS.ProcessEnv),
+      createSearchProvider(enabled({ SEARCH_PROVIDER: 'brave', BRAVE_SEARCH_API_KEY: 'k' })),
     ).toBeInstanceOf(BraveSearchProvider);
   });
 
   it('fails at construction time when SEARCH_PROVIDER=brave has no key', () => {
-    expect(() =>
-      createSearchProvider({ SEARCH_PROVIDER: 'brave' } as NodeJS.ProcessEnv),
-    ).toThrow();
+    expect(() => createSearchProvider(enabled({ SEARCH_PROVIDER: 'brave' }))).toThrow();
   });
 
   it('fails on an unknown SEARCH_PROVIDER value', () => {
-    expect(() =>
-      createSearchProvider({ SEARCH_PROVIDER: 'bing' } as NodeJS.ProcessEnv),
-    ).toThrow();
+    expect(() => createSearchProvider(enabled({ SEARCH_PROVIDER: 'bing' }))).toThrow();
+  });
+
+  describe('when web search is off', () => {
+    // The chart's default posture: search disabled, provider still nominally
+    // brave, no key anywhere. This combination crash-looped the pod on kind.
+    const off = { SEARCH_PROVIDER: 'brave' } as NodeJS.ProcessEnv;
+
+    it('does not validate provider config the app will never use', () => {
+      expect(() => createSearchProvider(off)).not.toThrow();
+      expect(createSearchProvider(off)).toBeInstanceOf(DisabledSearchProvider);
+    });
+
+    it('ignores an unknown SEARCH_PROVIDER too', () => {
+      expect(
+        createSearchProvider({ SEARCH_PROVIDER: 'bing' } as NodeJS.ProcessEnv),
+      ).toBeInstanceOf(DisabledSearchProvider);
+    });
+
+    it('rejects loudly if anything ever does reach it', async () => {
+      await expect(
+        createSearchProvider(off).search('anything', new AbortController().signal),
+      ).rejects.toThrow(/disabled/);
+    });
   });
 });

@@ -110,8 +110,35 @@ export class BraveSearchProvider implements SearchProvider {
   }
 }
 
-/** Builds the configured provider from env. An unknown `SEARCH_PROVIDER` value fails at boot, not at first search. */
+/**
+ * A provider that exists only to satisfy the ToolRuntime constructor when
+ * web search is off. Nothing can reach it: with WEB_SEARCH_ENABLED unset,
+ * isToolCapableModel() is false for every model, so no `tools` array is ever
+ * sent upstream and no tool call can come back. It throws rather than
+ * returning [] so that a future wiring mistake surfaces as a loud error
+ * instead of a search that silently finds nothing.
+ */
+export class DisabledSearchProvider implements SearchProvider {
+  search(): Promise<SearchResult[]> {
+    return Promise.reject(new Error('web search is disabled (WEB_SEARCH_ENABLED is not "true")'));
+  }
+}
+
+/**
+ * Builds the configured provider from env. An unknown `SEARCH_PROVIDER`, or
+ * `brave` with no key, fails at boot rather than at first search.
+ *
+ * The check is skipped entirely when web search is off. Validating provider
+ * config the app will never use turns the chart's default posture —
+ * webSearchEnabled: false with searchProvider: brave and no key in the
+ * Secret — into a CrashLoopBackOff, which is how this was found on kind.
+ * `WEB_SEARCH_ENABLED=false` is supposed to be byte-for-byte the
+ * pre-Wave-1.5 behaviour, and a pod that will not start is not that.
+ */
 export function createSearchProvider(env: NodeJS.ProcessEnv = process.env): SearchProvider {
+  if (env.WEB_SEARCH_ENABLED !== 'true') {
+    return new DisabledSearchProvider();
+  }
   const kind = env.SEARCH_PROVIDER ?? 'searxng';
   if (kind === 'searxng') {
     return new SearxngSearchProvider(env.SEARXNG_BASE_URL ?? 'http://localhost:8080');
