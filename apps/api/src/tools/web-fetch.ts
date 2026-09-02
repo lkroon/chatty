@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import type { ToolSource } from '@contracts/chat';
 import type { ToolExecutionResult } from './tool-runtime';
 import { ToolBudget, FETCH_MAX_BYTES, FETCH_MAX_CHARS, FETCH_TIMEOUT_MS } from './tool-budget';
+import { Logger } from '@nestjs/common';
 import { checkUrl } from './url-guard';
 
 const MAX_REDIRECTS = 3;
@@ -26,6 +27,8 @@ const ACCEPTED_CONTENT_TYPES = [
   'text/markdown',
   'application/json',
 ];
+
+const logger = new Logger('WebFetch');
 
 function hostnameOf(rawUrl: string): string {
   try {
@@ -135,6 +138,15 @@ export async function fetchPage(
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       const guard = await checkUrl(currentUrl);
       if (!guard.allowed) {
+        // A refused fetch is a security event, not a routine tool failure:
+        // either the model was talked into aiming at the private network, or
+        // a public host redirected there. Either way it is the one thing in
+        // this file worth finding in the log afterwards — the chip only says
+        // "couldn't read", and the model's own account of what happened is
+        // not evidence.
+        logger.warn(
+          `web_fetch blocked${hop > 0 ? ` (redirect hop ${hop})` : ''}: ${currentUrl} — ${guard.reason}`,
+        );
         return failed(currentUrl, `URL blocked: ${guard.reason}`);
       }
 
