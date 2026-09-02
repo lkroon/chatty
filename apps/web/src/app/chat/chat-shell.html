@@ -6,15 +6,33 @@
       aria-label="Toggle conversation list"
       (click)="sidebarOpen.set(!sidebarOpen())"
     >
-      ☰
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M3 6h14M3 10h14M3 14h14" />
+      </svg>
     </button>
-    <h1>opencode-chat</h1>
+    <span class="brand">
+      <app-chatty-logo [size]="26" />
+      <span>Chatty</span>
+    </span>
+    <div class="spacer"></div>
     <app-model-picker />
   </header>
 
   <div class="body" [class.sidebar-open]="sidebarOpen()">
     <div class="sidebar-backdrop" (click)="sidebarOpen.set(false)"></div>
     <aside class="sidebar">
+      <div class="sidebar__head">
+        <app-chatty-logo [size]="20" />
+        <span>Chatty</span>
+        <button
+          type="button"
+          class="sidebar__close"
+          aria-label="Close conversation list"
+          (click)="sidebarOpen.set(false)"
+        >
+          &times;
+        </button>
+      </div>
       <app-conversation-list (activated)="sidebarOpen.set(false)" />
     </aside>
     <main class="main">

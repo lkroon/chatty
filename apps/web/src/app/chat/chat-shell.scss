@@ -1,8 +1,8 @@
 :host {
   display: block;
   height: 100dvh;
-  color: #eaeaea;
-  background: #121212;
+  color: var(--oc-text, #23262b);
+  background: var(--oc-bg, #eef6f2);
 }
 
 .shell {
@@ -14,43 +14,122 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
   padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #2a2a2a;
+  padding-top: calc(0.6rem + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--oc-border, #dcece4);
+  background: var(--oc-surface, #fff);
   flex-shrink: 0;
-
-  h1 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0;
-    flex: 1;
-  }
 }
 
 .menu-btn {
-  display: none;
-  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 50%;
   border: none;
-  color: inherit;
-  font-size: 1.2rem;
+  background: none;
+  color: var(--oc-accent-ink, #7a2c22);
   cursor: pointer;
-  padding: 0.25em 0.4em;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover {
+    background: var(--oc-mint, #bfe3d3);
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--oc-accent-ink, #7a2c22);
+}
+
+.spacer {
+  flex: 1;
 }
 
 .body {
   flex: 1;
   display: flex;
   min-height: 0;
+  position: relative;
 }
 
+// Chatty Bubbles is mobile-first: conversation history always lives in a
+// slide-in drawer (never a permanent desktop-width sidebar), regardless of
+// viewport size — see the redesign discussion this replaces the earlier
+// two-pane layout with a horizontal breakpoint.
 .sidebar-backdrop {
-  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(40, 22, 16, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 10;
 }
 
 .sidebar {
-  width: 260px;
+  position: absolute;
+  inset: 0 25% 0 0;
+  max-width: 320px;
+  z-index: 11;
+  background: var(--oc-surface, #fff);
+  border-radius: 0 20px 20px 0;
+  box-shadow: 10px 0 28px rgba(45, 25, 18, 0.16);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.sidebar__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.9rem 0.9rem 0.6rem;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  color: var(--oc-accent-ink, #7a2c22);
   flex-shrink: 0;
-  border-right: 1px solid #2a2a2a;
+
+  span {
+    flex: 1;
+  }
+}
+
+.sidebar__close {
+  width: 1.8rem;
+  height: 1.8rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--oc-bg, #eef6f2);
+  color: var(--oc-text-muted, #6f7a76);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.body.sidebar-open .sidebar-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.body.sidebar-open .sidebar {
+  transform: translateX(0);
 }
 
 .main {
@@ -64,43 +143,4 @@
   // own overflow-y: auto never kicks in and the whole page scrolls
   // instead, past chat-shell's 100dvh dark background onto <body>'s.
   min-height: 0;
-}
-
-@media (max-width: 720px) {
-  .menu-btn {
-    display: inline-block;
-  }
-
-  .body {
-    position: relative;
-  }
-
-  .sidebar {
-    position: fixed;
-    inset: 0 25% 0 0;
-    z-index: 10;
-    background: #121212;
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
-  }
-
-  .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 9;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-
-  .body.sidebar-open .sidebar {
-    transform: translateX(0);
-  }
-
-  .body.sidebar-open .sidebar-backdrop {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }

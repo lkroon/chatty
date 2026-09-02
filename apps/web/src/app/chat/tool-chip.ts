@@ -47,12 +47,12 @@ import type { ToolCallChip } from '@contracts';
       display: inline-flex;
       align-items: center;
       gap: 0.4em;
-      padding: 0.3em 0.6em;
+      padding: 0.32em 0.7em;
       border-radius: 999px;
-      background: var(--oc-surface, #1e1e1e);
-      border: 1px solid var(--oc-border, #333);
-      font-size: 0.85em;
-      opacity: 0.85;
+      background: var(--oc-yellow, #f7b733);
+      font-weight: 600;
+      font-size: 0.78em;
+      color: #5c3c00;
       max-width: fit-content;
     }
 
@@ -61,15 +61,23 @@ import type { ToolCallChip } from '@contracts';
     }
 
     .tool-chip--expandable:hover {
-      opacity: 1;
+      filter: brightness(0.97);
+    }
+
+    .tool-chip--running {
+      background: var(--oc-surface, #fff);
+      border: 1px solid var(--oc-border, #dcece4);
+      color: var(--oc-text-muted, #6f7a76);
     }
 
     .tool-chip--failed {
-      opacity: 0.6;
+      background: var(--oc-surface, #fff);
+      border: 1px solid var(--oc-border, #dcece4);
+      color: var(--oc-text-muted, #6f7a76);
     }
 
     .tool-chip__count {
-      opacity: 0.6;
+      opacity: 0.75;
       font-size: 0.9em;
     }
 
@@ -78,8 +86,8 @@ import type { ToolCallChip } from '@contracts';
       width: 0.8em;
       height: 0.8em;
       border-radius: 50%;
-      border: 2px solid var(--oc-border, #555);
-      border-top-color: var(--oc-accent, #2b5fd9);
+      border: 2px solid var(--oc-border, #dcece4);
+      border-top-color: var(--oc-accent, #ff6f59);
       animation: tool-chip-spin 0.7s linear infinite;
     }
 
@@ -94,10 +102,11 @@ import type { ToolCallChip } from '@contracts';
       margin: 0.3em 0 0;
       padding: 0 0 0 1.4em;
       font-size: 0.85em;
+      color: var(--oc-text-muted, #6f7a76);
     }
 
     .tool-chip__sources a {
-      color: var(--oc-accent, #6ea0ff);
+      color: var(--oc-accent-ink, #7a2c22);
     }
   `,
 })

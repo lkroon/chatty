@@ -28,16 +28,18 @@ import { ChatStore } from '../core/chat-store';
     .model-picker {
       display: inline-flex;
       align-items: center;
-      gap: 0.4em;
+      gap: 0.35em;
+      background: var(--oc-surface, #fff);
+      border: 1px solid var(--oc-border, #dcece4);
+      border-radius: 999px;
+      padding: 0.3em 0.7em 0.3em 0.5em;
     }
 
     select {
-      font: inherit;
-      padding: 0.4em 0.6em;
-      border-radius: 6px;
-      border: 1px solid var(--oc-border, #444);
-      background: var(--oc-surface, #1e1e1e);
-      color: inherit;
+      font: 600 0.78rem 'Plus Jakarta Sans', sans-serif;
+      border: none;
+      background: none;
+      color: var(--oc-accent-ink, #7a2c22);
       max-width: 40vw;
     }
 
