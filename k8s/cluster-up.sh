@@ -111,7 +111,7 @@ kubectl --context "$CTX" apply -f "$APPLICATION_MANIFEST"
 
 echo
 echo "Bootstrap done. Argo CD will sync chatty from this repo."
-echo "  app:     http://chatty.localtest.me/  (Google SSO)"
+echo "  app:     http://localhost/                    (Google SSO)"
 echo "  argocd:  http://argocd.localtest.me/          (admin; password below)"
 kubectl --context "$CTX" -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' 2>/dev/null | base64 -d && echo
