@@ -2,10 +2,12 @@
 
 :root {
   --color-primary: #4338ca; /* indigo-700, matches manifest/theme-color */
-  --color-bg: #ffffff;
-  --color-text: #111111;
-  --color-text-muted: #666666;
-  color-scheme: light;
+  /* Dark to match the chat shell (apps/web/src/app/chat/chat-shell.scss's
+     :host background, #121212) — this app has no light theme. */
+  --color-bg: #121212;
+  --color-text: #eaeaea;
+  --color-text-muted: #999999;
+  color-scheme: dark;
 }
 
 *,
@@ -17,6 +19,10 @@
 html,
 body {
   height: 100%;
+  /* Also on <html>, not just <body>: iOS Safari's rubber-band overscroll
+     can reveal the html background past the body's edge, and this app is
+     installed as an iOS home-screen PWA. */
+  background: var(--color-bg);
 }
 
 body {

@@ -57,7 +57,7 @@ export class OpencodeService implements OnModuleInit {
       return models;
     } catch (err) {
       // Boot fetch failure -> fall back to the static OPENCODE_MODELS csv
-      // per the plan. UNVERIFIED upstream shape, see opencode-client.ts.
+      // per the plan.
       this.logger.warn(
         `Falling back to OPENCODE_MODELS csv: failed to fetch ${this.baseUrl}/models at boot (${(err as Error)?.message ?? err})`,
       );
@@ -70,11 +70,11 @@ export class OpencodeService implements OnModuleInit {
   }
 
   /**
-   * UNVERIFIED shape: assumed OpenAI-compatible `GET /models` response
-   * `{ data: [{ id, owned_by? }] }`. `label` defaults to `id` per the
-   * plan (no hardcoded id -> label map); `family` isn't specified by the
-   * plan, so it falls back the same way, preferring `owned_by` if the
-   * upstream happens to send one.
+   * OpenAI-compatible `GET /models` response `{ data: [{ id, owned_by? }] }`
+   * — confirmed against the live API on 2026-09-02 (see the Wave 1.5 plan).
+   * `label` defaults to `id` per the plan (no hardcoded id -> label map);
+   * `family` isn't specified by the plan, so it falls back the same way,
+   * preferring `owned_by` if the upstream happens to send one.
    */
   private static parseModelsResponse(body: unknown): Model[] {
     const data = (body as { data?: unknown[] })?.data;

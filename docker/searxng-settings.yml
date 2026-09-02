@@ -1,0 +1,18 @@
+# Local-dev-only SearXNG config, mounted read-only into the searxng
+# service in docker-compose.dev.yml. Layered on top of SearXNG's own
+# defaults (use_default_settings) — the only reason this file exists is
+# `formats: [html, json]`: a stock SearXNG only serves HTML, so
+# apps/api's SearxngSearchProvider (?format=json) gets a 403 without this.
+# secret_key below is a fixed dev-only placeholder — never reuse it for a
+# real deployment; the cluster's search provider is Brave instead (see
+# SEARCH_PROVIDER in .env.example / the Helm chart values).
+use_default_settings: true
+
+server:
+  secret_key: "local-dev-only-searxng-secret-key"
+  limiter: false
+
+search:
+  formats:
+    - html
+    - json

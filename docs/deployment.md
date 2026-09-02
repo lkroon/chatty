@@ -20,28 +20,51 @@ Create it with:
 kubectl -n opencode-chat create secret generic opencode-chat-auth --from-env-file=.env
 ```
 
-The `.env` file for this command must contain **exactly** these four keys and
-nothing else:
+The `.env` file for this command must contain **exactly** these four keys —
+five when `app.searchProvider=brave` (the chart's default; see
+[Web search (Wave 1.5)](#web-search-wave-15) below) — and nothing else:
 
 ```
 OPENCODE_API_KEY=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 SESSION_SECRET=...
+BRAVE_SEARCH_API_KEY=...   # only when app.searchProvider=brave
 ```
 
 **Do not point this command at the repo-root dev `.env`.** That file (copied
 from `.env.example`) carries several more variables — `APP_ORIGIN`,
 `ALLOWED_EMAILS`, `DATABASE_URL`, `DAILY_MESSAGE_LIMIT`, `COOKIE_SECURE`,
-`OPENCODE_BASE_URL`, `OPENCODE_MODELS` — that are chart **values**, not secret
-keys. Those are set via `charts/opencode-chat/values.yaml` (or a
-`--set`/values override at install time), not via this Secret.
-`DATABASE_URL` in particular is never part of `opencode-chat-auth` — it comes
-from the chart-managed `db-credentials` Secret instead.
+`OPENCODE_BASE_URL`, `OPENCODE_MODELS`, `WEB_SEARCH_ENABLED`,
+`SEARCH_PROVIDER`, `SEARXNG_BASE_URL`, `TOOL_CAPABLE_MODELS` — that are chart
+**values**, not secret keys. Those are set via
+`charts/opencode-chat/values.yaml` (or a `--set`/values override at install
+time), not via this Secret. `DATABASE_URL` in particular is never part of
+`opencode-chat-auth` — it comes from the chart-managed `db-credentials`
+Secret instead.
 
 Keep a separate, minimal `.env` (e.g. `.env.secret`, untracked, never
-committed) with just the four keys above for this command, distinct from the
+committed) with just the keys above for this command, distinct from the
 dev `.env` you use for `npm run dev`.
+
+### Web search (Wave 1.5)
+
+The chat model can call two tools, `web_search` and `web_fetch`, gated by
+`app.webSearchEnabled` (chart) / `WEB_SEARCH_ENABLED` (local dev). The search
+backend is `app.searchProvider`, one of:
+
+- `brave` — the chart default. Hosted, no cluster workload to run, but needs
+  `BRAVE_SEARCH_API_KEY` in `opencode-chat-auth` (above).
+- `searxng` — no API key, but needs a SearXNG instance reachable at
+  `app.searxngBaseUrl` **with JSON output enabled** (`formats: [html,
+  json]` in its `settings.yml` — a stock SearXNG only serves HTML and every
+  search 403s without this). Local dev's `docker-compose.dev.yml` runs one
+  pre-configured this way; running SearXNG in the cluster is not something
+  this chart sets up — bring your own if you want `searxng` there instead of
+  `brave`.
+
+An unknown `SEARCH_PROVIDER`/`app.searchProvider` value fails the pod at
+boot, not at the first search.
 
 If the namespace doesn't exist yet:
 

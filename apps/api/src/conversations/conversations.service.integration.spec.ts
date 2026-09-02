@@ -237,6 +237,96 @@ describeIfDocker('ConversationsService (integration)', () => {
     );
   });
 
+  it('finalizeAssistantMessage persists the summed upstream cost, and null when none was reported', async () => {
+    const { assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hi',
+    });
+    await service.finalizeAssistantMessage({
+      assistantMessageId,
+      content: 'the answer',
+      aborted: false,
+      cost: 0.0042,
+    });
+
+    const { rows } = await pool.query<{ upstream_cost: string | null }>(
+      'SELECT upstream_cost FROM messages WHERE id = $1',
+      [assistantMessageId],
+    );
+    expect(Number(rows[0].upstream_cost)).toBe(0.0042);
+  });
+
+  it('saveToolCalls round-trips chips through Postgres in ordinal order, and messages without any have no toolCalls field', async () => {
+    const { conversationId, assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'search for something',
+    });
+    await service.finalizeAssistantMessage({
+      assistantMessageId,
+      content: 'Here is what I found.',
+      aborted: false,
+    });
+    await service.saveToolCalls({
+      assistantMessageId,
+      chips: [
+        {
+          callId: 'call-1',
+          name: 'web_search',
+          status: 'done',
+          label: 'Searched "something"',
+          sources: [{ title: 'Something', url: 'https://example.com/something' }],
+        },
+        {
+          callId: 'call-2',
+          name: 'web_fetch',
+          status: 'running', // must be coerced to 'failed' — 'running' isn't storable.
+          label: 'Reading…',
+          sources: [],
+        },
+      ],
+    });
+
+    const detail = await service.getDetailForAccount(
+      String(accountAId),
+      conversationId,
+    );
+    const userMsg = detail.messages.find((m) => m.role === 'user');
+    const assistantMsg = detail.messages.find((m) => m.id === assistantMessageId);
+
+    expect(userMsg?.toolCalls).toBe(undefined);
+    expect(assistantMsg?.toolCalls?.length).toBe(2);
+    expect(assistantMsg?.toolCalls?.[0]).toEqual({
+      callId: expect.anything(),
+      name: 'web_search',
+      status: 'done',
+      label: 'Searched "something"',
+      sources: [{ title: 'Something', url: 'https://example.com/something' }],
+    });
+    expect(assistantMsg?.toolCalls?.[1]).toEqual({
+      callId: expect.anything(),
+      name: 'web_fetch',
+      status: 'failed',
+      label: 'Reading…',
+      sources: [],
+    });
+  });
+
+  it('saveToolCalls tolerates an empty array (no-op, no query)', async () => {
+    const { assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hi',
+    });
+    await service.saveToolCalls({ assistantMessageId, chips: [] });
+    const { rows } = await pool.query(
+      'SELECT * FROM message_tool_calls WHERE message_id = $1',
+      [assistantMessageId],
+    );
+    expect(rows.length).toBe(0);
+  });
+
   it("refuses to delete another account's conversation, and cascades messages when it does delete", async () => {
     const { conversationId } = await service.startExchange({
       accountId: String(accountAId),

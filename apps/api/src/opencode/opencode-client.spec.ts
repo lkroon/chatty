@@ -76,7 +76,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hel' },
         { type: 'delta', text: 'lo' },
-        { type: 'done', finishReason: 'stop' },
+        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
       ]);
     } finally {
       // Release any gate the client never reached, so the handler can finish
@@ -106,7 +106,10 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       })) {
         chunks.push(chunk);
       }
-      expect(chunks).toEqual([{ type: 'delta', text: 'Hello world' }]);
+      expect(chunks).toEqual([
+        { type: 'delta', text: 'Hello world' },
+        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
+      ]);
     } finally {
       await fake.close();
     }
@@ -195,6 +198,147 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         messages: [{ role: 'user', content: 'hi' }],
         stream: true,
       });
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('sends the tools array when provided, and omits the key entirely when not', async () => {
+    const bodies: unknown[] = [];
+    const fake = await startFakeUpstream((req, res) => {
+      let raw = '';
+      req.on('data', (d) => (raw += d));
+      req.on('end', () => {
+        bodies.push(JSON.parse(raw));
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      const tools = [
+        {
+          type: 'function' as const,
+          function: { name: 'web_search' as const, description: 'd', parameters: {} },
+        },
+      ];
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools,
+      })) {
+        expect(chunk).toBeDefined();
+      }
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'hi' }],
+      })) {
+        expect(chunk).toBeDefined();
+      }
+      expect(bodies[0]).toMatchObject({ tools });
+      expect(bodies[1]).not.toHaveProperty('tools');
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('reassembles a tool call streamed across six fragments into one call with the exact arguments string', async () => {
+    const fake = await startFakeUpstream(async (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      const frames = [
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '{"que' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ry": ' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '"Hac' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ker"' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '}' } }] } } ] },
+        { choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }] },
+      ];
+      for (const frame of frames) {
+        res.write(`data: ${JSON.stringify(frame)}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      const chunks: unknown[] = [];
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'search hacker news' }],
+      })) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([
+        {
+          type: 'done',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query": "Hacker"}' }],
+          cost: null,
+        },
+      ]);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('a stream emitting finish_reason then [DONE] yields exactly one done chunk', async () => {
+    const fake = await startFakeUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      const chunks: unknown[] = [];
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'hi' }],
+      })) {
+        chunks.push(chunk);
+      }
+      const doneChunks = chunks.filter((c) => (c as { type: string }).type === 'done');
+      expect(doneChunks).toHaveLength(1);
+      expect(doneChunks[0]).toEqual({
+        type: 'done',
+        finishReason: 'stop',
+        toolCalls: undefined,
+        cost: null,
+      });
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('captures a trailing cost frame that arrives after [DONE]', async () => {
+    const fake = await startFakeUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.write(`data: ${JSON.stringify({ choices: [], cost: '0.0042' })}\n\n`);
+      res.end();
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      const chunks: unknown[] = [];
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'hi' }],
+      })) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([
+        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: 0.0042 },
+      ]);
     } finally {
       await fake.close();
     }

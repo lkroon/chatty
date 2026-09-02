@@ -58,6 +58,12 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  // Without this, a flex column child defaults to min-height: auto — it
+  // grows to fit app-message-thread's full (unbounded) content instead of
+  // being capped at the space .body actually has, so app-message-thread's
+  // own overflow-y: auto never kicks in and the whole page scrolls
+  // instead, past chat-shell's 100dvh dark background onto <body>'s.
+  min-height: 0;
 }
 
 @media (max-width: 720px) {

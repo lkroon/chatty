@@ -128,6 +128,62 @@ describe('ChatStore', () => {
     expect(store.messages().some((m) => m.role === 'assistant')).toBeFalse();
   });
 
+  it('two tool events with the same callId produce one chip, not two, and it survives into the finalized message', () => {
+    store.send('search something');
+    api.chatEvents$.next({ type: 'meta', conversationId: 'c1', messageId: 'm2' });
+    api.chatEvents$.next({
+      type: 'tool',
+      chip: { callId: 'call-1', name: 'web_search', status: 'running', label: 'Searching…', sources: [] },
+    });
+    expect(store.streamingToolCalls().length).toBe(1);
+    api.chatEvents$.next({
+      type: 'tool',
+      chip: {
+        callId: 'call-1',
+        name: 'web_search',
+        status: 'done',
+        label: 'Searched "something"',
+        sources: [{ title: 'X', url: 'https://x.example' }],
+      },
+    });
+    expect(store.streamingToolCalls().length).toBe(1);
+    expect(store.streamingToolCalls()[0].status).toBe('done');
+
+    api.chatEvents$.next({ type: 'delta', text: 'answer' });
+    api.chatEvents$.next({ type: 'done', finishReason: 'stop' });
+
+    const finalized = store.messages().at(-1);
+    expect(finalized?.toolCalls?.length).toBe(1);
+    expect(finalized?.toolCalls?.[0].status).toBe('done');
+    expect(store.streamingToolCalls()).toEqual([]);
+  });
+
+  it('a thinking event followed by a delta clears the thinking flag', () => {
+    store.send('hello');
+    api.chatEvents$.next({ type: 'meta', conversationId: 'c1', messageId: 'm2' });
+    api.chatEvents$.next({ type: 'thinking' });
+    expect(store.streamingThinking()).toBeTrue();
+
+    api.chatEvents$.next({ type: 'delta', text: 'Hi' });
+    expect(store.streamingThinking()).toBeFalse();
+  });
+
+  it('a finalized message with no tool calls has no toolCalls field', () => {
+    store.send('hello');
+    api.chatEvents$.next({ type: 'meta', conversationId: 'c1', messageId: 'm2' });
+    api.chatEvents$.next({ type: 'delta', text: 'Hi' });
+    api.chatEvents$.next({ type: 'done', finishReason: 'stop' });
+    expect(store.messages().at(-1)?.toolCalls).toBeUndefined();
+  });
+
+  it('ignores an unknown future event type rather than throwing', () => {
+    store.send('hello');
+    expect(() =>
+      api.chatEvents$.next({ type: 'from-the-future' } as unknown as ChatEvent),
+    ).not.toThrow();
+    expect(store.isStreaming()).toBeTrue();
+  });
+
   it('ignores an empty send while idle and while already streaming', () => {
     const before = store.messages().length;
     store.send('   ');

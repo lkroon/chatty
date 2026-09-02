@@ -4,6 +4,9 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { ConversationsService } from '../conversations/conversations.service';
 import { DbModule } from '../db/db.module';
 import { PostgresUsageService } from '../db/postgres-usage.service';
+import { TOOL_RUNTIME } from '../tools/tool-runtime';
+import { ToolRuntimeImpl } from '../tools/tool-runtime.impl';
+import { createSearchProvider } from '../tools/search-provider';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { CONVERSATION_STORE } from './conversation-store';
@@ -22,6 +25,14 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
     ChatService,
     { provide: CONVERSATION_STORE, useExisting: ConversationsService },
     { provide: USAGE_SERVICE, useExisting: PostgresUsageService },
+    {
+      // createSearchProvider() throws at construction for an unknown
+      // SEARCH_PROVIDER — a useFactory provider runs at Nest bootstrap,
+      // so an unknown value fails app startup, not the first search
+      // (Wave 1.5 plan requirement).
+      provide: TOOL_RUNTIME,
+      useFactory: () => new ToolRuntimeImpl(createSearchProvider()),
+    },
   ],
 })
 export class ChatModule {}

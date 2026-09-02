@@ -72,6 +72,7 @@ describe('InMemoryConversationStore', () => {
       role: 'assistant',
       content: 'partial reply',
       finishReason: 'aborted',
+      cost: null,
     });
   });
 
@@ -93,5 +94,44 @@ describe('InMemoryConversationStore', () => {
       .getConversation(conversationId)
       ?.messages.find((m) => m.id === assistantMessageId);
     expect(message?.finishReason).toBeNull();
+  });
+
+  it('saveToolCalls stores the chips, coercing a running status to failed', async () => {
+    const store = new InMemoryConversationStore();
+    const { conversationId, assistantMessageId } = await store.startExchange({
+      accountId: 'acct-1',
+      model: 'glm-5.3',
+      userContent: 'hi',
+    });
+
+    await store.saveToolCalls({
+      assistantMessageId,
+      chips: [
+        {
+          callId: 'call-1',
+          name: 'web_search',
+          status: 'running',
+          label: 'Searching…',
+          sources: [],
+        },
+      ],
+    });
+
+    const message = store
+      .getConversation(conversationId)
+      ?.messages.find((m) => m.id === assistantMessageId);
+    expect(message?.toolCalls).toEqual([
+      { callId: 'call-1', name: 'web_search', status: 'failed', label: 'Searching…', sources: [] },
+    ]);
+  });
+
+  it('saveToolCalls tolerates an empty array (no-op)', async () => {
+    const store = new InMemoryConversationStore();
+    const { assistantMessageId } = await store.startExchange({
+      accountId: 'acct-1',
+      model: 'glm-5.3',
+      userContent: 'hi',
+    });
+    await expect(store.saveToolCalls({ assistantMessageId, chips: [] })).resolves.toBeUndefined();
   });
 });
