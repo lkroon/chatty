@@ -1,6 +1,6 @@
 # Deployment
 
-Operator-facing runbook for getting opencode-chat onto a cluster and keeping
+Operator-facing runbook for getting Chatty onto a cluster and keeping
 it there. For the one-time steps required before the *first* deploy (hostname,
 DNS, TLS decision, platform prerequisites), see
 [`pre-deploy-checklist.md`](pre-deploy-checklist.md) first — several of the
@@ -9,7 +9,7 @@ procedures below assume that checklist is already done.
 ## Secret creation runbook
 
 The app's secrets are **not** templated into the Helm chart. They live in a
-Kubernetes Secret named `opencode-chat-auth`, created out-of-band, and
+Kubernetes Secret named `chatty-auth`, created out-of-band, and
 consumed by the Deployment via `envFrom.secretRef`. Argo CD does not manage
 this Secret, which is deliberate — see [Argo CD self-heal](#argo-cd-self-heal-and-manual-changes)
 below.
@@ -17,7 +17,7 @@ below.
 Create it with:
 
 ```sh
-kubectl -n opencode-chat create secret generic opencode-chat-auth --from-env-file=.env
+kubectl -n chatty create secret generic chatty-auth --from-env-file=.env
 ```
 
 The `.env` file for this command must contain **exactly** these four keys —
@@ -38,9 +38,9 @@ from `.env.example`) carries several more variables — `APP_ORIGIN`,
 `OPENCODE_BASE_URL`, `OPENCODE_MODELS`, `WEB_SEARCH_ENABLED`,
 `SEARCH_PROVIDER`, `SEARXNG_BASE_URL`, `TOOL_CAPABLE_MODELS` — that are chart
 **values**, not secret keys. Those are set via
-`charts/opencode-chat/values.yaml` (or a `--set`/values override at install
+`charts/chatty/values.yaml` (or a `--set`/values override at install
 time), not via this Secret. `DATABASE_URL` in particular is never part of
-`opencode-chat-auth` — it comes from the chart-managed `db-credentials`
+`chatty-auth` — it comes from the chart-managed `db-credentials`
 Secret instead.
 
 Keep a separate, minimal `.env` (e.g. `.env.secret`, untracked, never
@@ -54,7 +54,7 @@ The chat model can call two tools, `web_search` and `web_fetch`, gated by
 backend is `app.searchProvider`, one of:
 
 - `brave` — the chart default. Hosted, no cluster workload to run, but needs
-  `BRAVE_SEARCH_API_KEY` in `opencode-chat-auth` (above).
+  `BRAVE_SEARCH_API_KEY` in `chatty-auth` (above).
 - `searxng` — no API key, but needs a SearXNG instance reachable at
   `app.searxngBaseUrl` **with JSON output enabled** (`formats: [html,
   json]` in its `settings.yml` — a stock SearXNG only serves HTML and every
@@ -69,12 +69,12 @@ boot, not at the first search.
 If the namespace doesn't exist yet:
 
 ```sh
-kubectl create namespace opencode-chat
+kubectl create namespace chatty
 ```
 
 ## Google Cloud console steps
 
-opencode-chat reuses the **existing** Google OAuth client from a sibling
+Chatty reuses the **existing** Google OAuth client from a sibling
 project — there is no new OAuth client, no new consent screen, no new domain
 verification. The only console change is adding a second redirect URI:
 
@@ -112,9 +112,9 @@ authorized redirect URIs before testing the local login round-trip.
 
 1. Tag a release: `git tag v0.x.y && git push origin main v0.x.y`.
 2. `.github/workflows/release.yml` builds and pushes
-   `ghcr.io/lkroon/opencode-chat:v0.x.y`.
+   `ghcr.io/lkroon/chatty:v0.x.y`.
 3. The same workflow commits the new `imageTag` into
-   `charts/opencode-chat/values.yaml`, with `[skip ci]` in the commit message
+   `charts/chatty/values.yaml`, with `[skip ci]` in the commit message
    so the bump commit doesn't retrigger CI.
 4. Argo CD (automated sync, self-heal enabled) notices the values change and
    syncs the cluster to the new image — no manual `kubectl` step for a normal
@@ -162,8 +162,8 @@ migration has run since (or the migration was written to be
 backward-compatible per above):
 
 ```sh
-# Edit charts/opencode-chat/values.yaml: set imageTag back to the previous tag
-git add charts/opencode-chat/values.yaml
+# Edit charts/chatty/values.yaml: set imageTag back to the previous tag
+git add charts/chatty/values.yaml
 git commit -m "chore: roll back imageTag to v0.x.y [skip ci]"
 git push
 ```
@@ -175,15 +175,15 @@ reconcile. The git commit is the only durable way to change what's deployed.
 
 ## Secret-refresh runbook
 
-To rotate or update any of the four keys in `opencode-chat-auth` (e.g. a
+To rotate or update any of the four keys in `chatty-auth` (e.g. a
 rotated `OPENCODE_API_KEY`, a new `SESSION_SECRET`), re-create the Secret and
 restart the Deployment to pick it up — the app reads env vars at process
 start, it does not watch the Secret for changes.
 
 ```sh
-kubectl -n opencode-chat create secret generic opencode-chat-auth \
+kubectl -n chatty create secret generic chatty-auth \
   --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n opencode-chat rollout restart deployment/opencode-chat
+kubectl -n chatty rollout restart deployment/chatty
 ```
 
 (`.env` here is the minimal four-key file described in
@@ -192,19 +192,19 @@ kubectl -n opencode-chat rollout restart deployment/opencode-chat
 
 ### Argo CD self-heal and manual changes
 
-Argo CD has self-heal enabled on the `opencode-chat` Application: **anything
-applied by hand to the `opencode-chat` namespace that conflicts with what the
+Argo CD has self-heal enabled on the `chatty` Application: **anything
+applied by hand to the `chatty` namespace that conflicts with what the
 chart declares gets reverted**, usually within a few minutes. This is why the
 secret-refresh procedure above only ever touches the `Secret` and does a
 `rollout restart` — both of those are safe:
 
-- The `opencode-chat-auth` Secret is created **out-of-band** and is not part
+- The `chatty-auth` Secret is created **out-of-band** and is not part
   of the chart's rendered manifests, so Argo CD doesn't manage it and won't
   revert changes to it.
 - `kubectl rollout restart` doesn't change the Deployment's declared spec (no
   drift from the chart's desired state), so self-heal has nothing to correct.
 
-**Do not** `kubectl edit deployment/opencode-chat` or `kubectl apply` a
+**Do not** `kubectl edit deployment/chatty` or `kubectl apply` a
 modified Deployment/Service/Ingress manifest directly — those *are* managed
 by the chart, and a hand-applied change to them will be silently reverted by
 self-heal on the next reconcile, which is confusing to debug if you don't
@@ -214,14 +214,14 @@ the Argo CD UI first.
 
 ## GHCR package visibility (one-time)
 
-The first `v*` tag push creates the `ghcr.io/lkroon/opencode-chat` package as
+The first `v*` tag push creates the `ghcr.io/lkroon/chatty` package as
 **private** by default. Every Argo CD sync after that will fail to pull the
 image (`ImagePullBackOff`) until the package is made public, or the cluster
 is given credentials to pull it.
 
 **Default assumption for this project: make it public.** Steps:
 
-1. GitHub → the repo/org's **Packages** tab → `opencode-chat`.
+1. GitHub → the repo/org's **Packages** tab → `chatty`.
 2. **Package settings** → **Change visibility** → **Public**.
 
 This is a one-time, manual step — it is not automatable from the `release.yml`
@@ -230,6 +230,6 @@ workflow can change).
 
 **Alternative, if you don't want the image public:** add `imagePullSecrets`
 to the chart's Deployment plus a `kubernetes.io/dockerconfigjson` Secret
-created out-of-band (same pattern as `opencode-chat-auth`) with a GHCR
+created out-of-band (same pattern as `chatty-auth`) with a GHCR
 read token. This is not the default for this project — only do it if the
 operator explicitly decides against making the package public.

@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
 # Bootstrap the local kind cluster for GitOps. Installs the platform layer
 # (ingress, metrics-server, Argo CD) and the out-of-band secret, then hands
-# control to Argo CD, which deploys opencode-chat from this same repo's
-# charts/opencode-chat chart. This script does NOT build or deploy the app
+# control to Argo CD, which deploys chatty from this same repo's
+# charts/chatty chart. This script does NOT build or deploy the app
 # image — that's a separate release step (see .github/workflows, once it
 # exists).
 #
-# Idempotent; rerun freely. After `kind delete cluster --name opencode-chat`,
+# Idempotent; rerun freely. After `kind delete cluster --name chatty`,
 # this recreates everything except the database contents.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CLUSTER=opencode-chat
+CLUSTER=chatty
 CTX="kind-$CLUSTER"
 INGRESS_NGINX_MANIFEST=https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 METRICS_SERVER_MANIFEST=https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ARGOCD_MANIFEST=https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 # Applied from the local checkout, not a remote raw URL: unlike the
 # frameworks/charts split, this repo carries its own Application manifest.
-APPLICATION_MANIFEST=argocd/opencode-chat.yaml
+# The -kind variant layers charts/chatty/values-kind.yaml over values.yaml so
+# the localtest.me host and plain-http cookie stay out of the production
+# values Argo CD syncs to Hetzner.
+APPLICATION_MANIFEST=argocd/chatty-kind.yaml
 
 if [[ ! -f .env ]]; then
   echo "ERROR: .env not found at repo root. Create it with SESSION_SECRET," >&2
   echo "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and OPENCODE_API_KEY (values" >&2
-  echo "unquoted) -- these four map straight onto the opencode-chat-auth" >&2
+  echo "unquoted) -- these four map straight onto the chatty-auth" >&2
   echo "Secret. Non-secret app config (APP_ORIGIN, ALLOWED_EMAILS, etc.)" >&2
-  echo "belongs in charts/opencode-chat/values.yaml, not here." >&2
+  echo "belongs in charts/chatty/values.yaml, not here." >&2
   exit 1
 fi
 
@@ -49,9 +52,9 @@ kubectl --context "$CTX" get deploy -n kube-system metrics-server >/dev/null 2>&
 }
 
 # 4. App namespace + the one secret that never enters git
-kubectl --context "$CTX" create namespace opencode-chat --dry-run=client -o yaml \
+kubectl --context "$CTX" create namespace chatty --dry-run=client -o yaml \
   | kubectl --context "$CTX" apply -f -
-kubectl --context "$CTX" -n opencode-chat create secret generic opencode-chat-auth \
+kubectl --context "$CTX" -n chatty create secret generic chatty-auth \
   --from-env-file=.env --dry-run=client -o yaml \
   | kubectl --context "$CTX" apply -f -
 
@@ -90,8 +93,8 @@ kubectl --context "$CTX" -n argocd rollout status deploy/argocd-server --timeout
 kubectl --context "$CTX" apply -f "$APPLICATION_MANIFEST"
 
 echo
-echo "Bootstrap done. Argo CD will sync opencode-chat from this repo."
-echo "  app:     http://opencode-chat.localtest.me/  (Google SSO)"
+echo "Bootstrap done. Argo CD will sync chatty from this repo."
+echo "  app:     http://chatty.localtest.me/  (Google SSO)"
 echo "  argocd:  http://argocd.localtest.me/          (admin; password below)"
 kubectl --context "$CTX" -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' 2>/dev/null | base64 -d && echo

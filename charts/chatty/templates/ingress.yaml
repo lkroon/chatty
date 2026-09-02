@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: opencode-chat
+  name: chatty
   annotations:
     # SSE-critical: without these, POST /api/chat's stream arrives in one
     # lump at the end instead of token-by-token. Do not remove.
@@ -26,6 +26,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: opencode-chat
+                name: chatty
                 port:
                   name: http

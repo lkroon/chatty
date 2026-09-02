@@ -22,7 +22,7 @@ async function bootstrap() {
       // users out. `pgPool` is shared with the `accounts` upsert query —
       // see apps/api/src/auth/pg-pool.ts.
       store: new PgSession({ pool: pgPool, createTableIfMissing: true }),
-      name: 'opencode-chat.sid',
+      name: 'chatty.sid',
       secret: process.env.SESSION_SECRET ?? 'dev-secret-change-me',
       resave: false,
       saveUninitialized: false,

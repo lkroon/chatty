@@ -17,7 +17,7 @@ import { ChatShell } from './chat-shell';
 class TestChatApi implements ChatApi {
   private readonly seed: ConversationDetail = {
     id: 'seed-1',
-    title: 'Welcome to opencode-chat',
+    title: 'Welcome to chatty',
     messages: [],
   };
 
@@ -77,7 +77,7 @@ describe('ChatShell', () => {
     expect(el.querySelector('app-composer')).toBeTruthy();
 
     // Seed conversation from the test API loaded into the sidebar.
-    expect(el.textContent).toContain('Welcome to opencode-chat');
+    expect(el.textContent).toContain('Welcome to chatty');
   });
 
   it('renders streamed deltas progressively into the thread as they arrive', async () => {

@@ -3,20 +3,20 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: opencode-chat
+  name: chatty
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/lkroon/chatty.git
     targetRevision: main
-    path: charts/opencode-chat
+    path: charts/chatty
     helm:
       valueFiles:
         - values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: opencode-chat
+    namespace: chatty
   syncPolicy:
     automated:
       prune: true
