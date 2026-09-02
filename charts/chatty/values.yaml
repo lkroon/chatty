@@ -23,7 +23,15 @@ app:
   opencodeModels: ""
   # Wave 1.5 — model-driven web_search/web_fetch tools. Off = no `tools`
   # sent upstream, no chips, byte-for-byte the pre-Wave-1.5 behaviour.
-  webSearchEnabled: false
+  #
+  # On by default: a chat app that cannot look anything up is the lesser
+  # product, and the per-exchange budget in apps/api/src/tools/tool-budget.ts
+  # is what keeps a metered key safe, not this flag.
+  #
+  # NOTE: with searchProvider=brave below, this makes BRAVE_SEARCH_API_KEY a
+  # required key in the auth Secret — the pod deliberately fails at boot
+  # without it rather than discovering the problem at the first search.
+  webSearchEnabled: true
   # 'searxng' | 'brave'. Unknown value fails the pod at boot.
   searchProvider: brave
   # Only used when searchProvider=searxng; ignored (and may be left

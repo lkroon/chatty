@@ -74,9 +74,17 @@ kubectl -n chatty create secret generic chatty-auth --from-env-file=.env
 ```
 
 with a minimal `.env` containing exactly `OPENCODE_API_KEY`,
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, plus
-`BRAVE_SEARCH_API_KEY` if you're keeping the chart's default
-`app.searchProvider=brave` (Wave 1.5 web search). See
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` and
+`BRAVE_SEARCH_API_KEY`.
+
+**The Brave key is required, not optional.** The chart ships
+`app.webSearchEnabled: true` with `app.searchProvider: brave`, and that
+combination fails the pod at boot when the key is missing — deliberately, so
+a misconfiguration surfaces on the first sync instead of at somebody's first
+search. Get a free key at <https://brave.com/search/api/> (2,000
+queries/month, far beyond single-user use). The alternative is setting
+`app.webSearchEnabled: false` in values, which drops the app back to
+pre-Wave-1.5 behaviour. See
 [`deployment.md` → Secret creation runbook](deployment.md#secret-creation-runbook)
 and [`deployment.md` → Web search](deployment.md#web-search-wave-15) — do not
 reuse the full dev `.env` for this.

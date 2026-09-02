@@ -29,7 +29,7 @@ OPENCODE_API_KEY=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 SESSION_SECRET=...
-BRAVE_SEARCH_API_KEY=...   # only when app.searchProvider=brave
+BRAVE_SEARCH_API_KEY=...   # required: chart defaults to web search on, via brave
 ```
 
 **Do not point this command at the repo-root dev `.env`.** That file (copied
@@ -53,8 +53,9 @@ The chat model can call two tools, `web_search` and `web_fetch`, gated by
 `app.webSearchEnabled` (chart) / `WEB_SEARCH_ENABLED` (local dev). The search
 backend is `app.searchProvider`, one of:
 
-- `brave` — the chart default. Hosted, no cluster workload to run, but needs
-  `BRAVE_SEARCH_API_KEY` in `chatty-auth` (above).
+- `brave` — the chart default, and web search is on by default. Hosted, no
+  cluster workload to run, but the key is then mandatory: a missing
+  `BRAVE_SEARCH_API_KEY` in `chatty-auth` (above) fails the pod at boot.
 - `searxng` — no API key, but needs a SearXNG instance reachable at
   `app.searxngBaseUrl` **with JSON output enabled** (`formats: [html,
   json]` in its `settings.yml` — a stock SearXNG only serves HTML and every
