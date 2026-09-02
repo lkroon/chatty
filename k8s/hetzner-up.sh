@@ -90,9 +90,28 @@ else
   echo "k3s already installed, skipping"
 fi
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# `systemctl start k3s` returns before the apiserver is serving and before
+# the node has registered itself, so a bare `kubectl wait node --all` on a
+# fresh install exits immediately with "error: no matching resources found"
+# — waiting for *all* of an empty set is vacuously satisfied. Observed on
+# the first real run. Wait for the node to exist before waiting on it.
+echo "waiting for the apiserver and node registration..."
+for attempt in $(seq 1 60); do
+  if [[ -n "$(kubectl get nodes -o name 2>/dev/null)" ]]; then break; fi
+  [[ $attempt -eq 60 ]] && fail "k3s apiserver never registered a node (check: journalctl -u k3s)"
+  sleep 5
+done
 kubectl wait --for=condition=ready node --all --timeout=300s
 
 # k3s bundles metrics-server; Gate 3's `kubectl top nodes` needs it running.
+# It is applied by k3s's own manifest reconciler shortly after start, so it
+# may not exist yet either.
+for attempt in $(seq 1 60); do
+  if kubectl -n kube-system get deploy metrics-server >/dev/null 2>&1; then break; fi
+  [[ $attempt -eq 60 ]] && fail "k3s never deployed metrics-server"
+  sleep 5
+done
 kubectl -n kube-system rollout status deploy/metrics-server --timeout=300s
 
 # --------------------------------------------------------------- ingress
