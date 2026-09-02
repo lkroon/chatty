@@ -79,7 +79,7 @@ chatty/
 │  └─ contracts/            # shared DTOs + SSE event types (source of truth)
 ├─ charts/chatty/           # Helm chart
 ├─ argocd/chatty.yaml
-├─ k8s/                     # local kind cluster bootstrap
+├─ k8s/                     # cluster bootstrap: kind (cluster-up.sh) + Hetzner (hetzner-up.sh)
 ├─ docker/Dockerfile        # multi-stage, single runtime image
 ├─ .github/workflows/       # ci.yml, release.yml
 ├─ docker-compose.dev.yml   # postgres only, for local dev

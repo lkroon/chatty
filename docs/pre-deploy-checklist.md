@@ -152,28 +152,46 @@ the other.
 
 **10. Build the platform layer on the Hetzner box**
 
-There is no Kubernetes on `ubuntu-4gb-hel1-2` yet, and nothing in
-`lkroon/charts` or `lkroon/frameworks` puts it there — the only cluster
-either repo bootstraps is local `kind`. Everything below is a prerequisite of
-step 8, not a consequence of it:
+`k8s/hetzner-up.sh` does steps 6, 8, 9 and 10 in one idempotent run — it is
+the production sibling of `k8s/cluster-up.sh`. Run it **on the server**, as
+root, after steps 1–5 and 7 are done:
 
-1. **k3s**, with its bundled Traefik disabled so ingress-nginx owns :80/:443:
-   `curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik --disable=servicelb" sh -`
-   (`--disable=servicelb` only if you front it with hostPorts; keep klipper-lb
-   if you want a LoadBalancer Service to bind the node IP.)
-2. **ingress-nginx**, **Argo CD**, **metrics-server** — the same three
-   `k8s/cluster-up.sh` installs on kind, minus the `--kubelet-insecure-tls`
-   patch, which is a kind-only workaround.
-3. **cert-manager + the `letsencrypt-prod` ClusterIssuer** from step 9.
-4. `kubectl top nodes` **before** applying the Application, to confirm the
-   400 Mi / 250 m request budget actually fits beside what already runs
-   there. A 4 GB node with k3s, ingress-nginx and Argo CD on it has less
-   headroom than the number suggests.
+```sh
+ssh root@chat.lkroon.nl
+git clone https://github.com/lkroon/chatty.git && cd chatty
+# minimal secret file, five keys, never committed:
+cat > /root/chatty-auth.env <<'EOF'
+OPENCODE_API_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SESSION_SECRET=...
+BRAVE_SEARCH_API_KEY=...
+EOF
+./k8s/hetzner-up.sh --secret-env /root/chatty-auth.env
+```
 
-Firewall: 80 and 443 open to the world (443 for the app, 80 for the ACME
-HTTP-01 challenge — closing it breaks certificate renewal three months
-later, long after you've forgotten why it was open). 6443 should **not** be
-public; reach the API server over SSH port-forwarding or a tunnel.
+It installs k3s (Traefik disabled, klipper-lb and the bundled metrics-server
+kept), ingress-nginx, cert-manager with the `letsencrypt-prod` ClusterIssuer,
+Argo CD, the namespace and the `chatty-auth` Secret, prints the resource
+budget, and applies the Application. `--argocd-core` swaps the full Argo CD
+for the UI-less core install, ~300 Mi lighter.
+
+It refuses to start if `chat.lkroon.nl` does not already resolve to the
+server's own public IP — a failed ACME order counts against a per-hostname
+rate limit that resets weekly, so that mistake is worth catching before
+cert-manager makes it.
+
+**Firewall: use the Hetzner Cloud Firewall, not `ufw`.** Allow 22, 80 and
+443 inbound and deny the rest, in the Hetzner console. A host firewall
+programs the same netfilter tables k3s uses for pod networking, and enabling
+one without the right allowances is a well-known way to break a cluster that
+was working a minute earlier. Port 80 stays open **permanently**, not just
+for the first deploy: Let's Encrypt renews over HTTP-01 roughly every 60
+days. Port 6443 must not be public — reach the API server over SSH.
+
+Argo CD is deliberately not exposed to the internet. It has cluster-wide
+write access; reach it by SSH port-forward (the script prints the command)
+or drive the cluster with `k9s` against a copied kubeconfig.
 
 ## After this checklist
 
