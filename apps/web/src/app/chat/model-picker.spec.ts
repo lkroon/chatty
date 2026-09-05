@@ -31,7 +31,8 @@ describe('ModelPicker', () => {
   let api: StubChatApi;
 
   function setup(models: Model[]): void {
-    localStorage.removeItem('oc-model'); // isolate from any stored selection left by another spec
+    localStorage.removeItem('chatty-model-choice'); // isolate from any stored selection left by another spec
+    localStorage.removeItem('oc-model');
     api = new StubChatApi();
     api.models = models;
     TestBed.configureTestingModule({
@@ -61,6 +62,18 @@ describe('ModelPicker', () => {
     setup([{ id: 'other', label: 'other', family: 'x' }]);
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('.model-picker__search-icon')).toBeNull();
+  });
+
+  it('shows the store\'s selected model, not whichever option renders first', () => {
+    // Regression: [value] on the <select> was applied before the @for had
+    // created any <option>, so the browser fell back to the first one and the
+    // picker displayed a model nobody had selected.
+    setup([
+      { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro', family: 'x' },
+      { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'x' },
+    ]);
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select')!;
+    expect(select.value).toBe('glm-5.3-flash');
   });
 
   it('toggles the icon when the selection changes to a different model', () => {

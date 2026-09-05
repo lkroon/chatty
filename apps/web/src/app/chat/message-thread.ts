@@ -1,6 +1,7 @@
 import { Component, ElementRef, afterRenderEffect, inject, viewChild } from '@angular/core';
 
 import { ChatStore } from '../core/chat-store';
+import { ViewportFit } from '../core/viewport-fit';
 import { MessageBubble } from './message-bubble';
 import { ToolChip } from './tool-chip';
 
@@ -105,6 +106,7 @@ import { ToolChip } from './tool-chip';
 })
 export class MessageThread {
   protected readonly store = inject(ChatStore);
+  private readonly viewportFit = inject(ViewportFit);
   private readonly scrollEl = viewChild.required<ElementRef<HTMLDivElement>>('scrollEl');
 
   constructor() {
@@ -116,6 +118,10 @@ export class MessageThread {
       this.store.messages();
       this.store.streamingText();
       this.store.isStreaming();
+      // The keyboard opening shortens the thread; without re-pinning, the
+      // last message slides up out of view exactly when the user is about
+      // to reply to it.
+      this.viewportFit.height();
       const el = this.scrollEl().nativeElement;
       el.scrollTop = el.scrollHeight;
     });

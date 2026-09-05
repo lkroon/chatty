@@ -8,13 +8,20 @@ import { ChatStore } from '../core/chat-store';
   template: `
     <label class="model-picker">
       <span class="sr-only">Model</span>
-      <select
-        [value]="store.selectedModelId()"
-        (change)="onChange($event)"
-        [disabled]="store.models().length === 0"
-      >
+      <!--
+        The selection lives on the <option>s, not as [value] on the <select>.
+        Angular applies an element's own property bindings before it creates
+        the embedded views inside it, so [value] here would be assigned while
+        the list is still empty — a no-op the browser answers by falling back
+        to whatever option renders first. The picker then showed a model the
+        store had not selected, which is how the default looked broken even
+        though the store had chosen correctly.
+      -->
+      <select (change)="onChange($event)" [disabled]="store.models().length === 0">
         @for (model of store.models(); track model.id) {
-          <option [value]="model.id">{{ model.label }}</option>
+          <option [value]="model.id" [selected]="model.id === store.selectedModelId()">
+            {{ model.label }}
+          </option>
         }
       </select>
       @if (selectedModelCanSearch()) {
@@ -28,6 +35,10 @@ import { ChatStore } from '../core/chat-store';
     .model-picker {
       display: inline-flex;
       align-items: center;
+      /* Shrinks rather than pushing itself out of the top bar on a narrow
+         phone — the model picker has to stay reachable at all times. */
+      min-width: 0;
+      flex-shrink: 1;
       gap: 0.35em;
       background: var(--oc-surface, #fff);
       border: 1px solid var(--oc-border, #dcece4);
@@ -36,11 +47,16 @@ import { ChatStore } from '../core/chat-store';
     }
 
     select {
-      font: 600 0.78rem 'Plus Jakarta Sans', sans-serif;
+      /* 16px, like the composer's textarea: anything smaller makes iOS
+         Safari zoom the page in when the control takes focus, which pushes
+         the rest of the top bar off screen. */
+      font: 600 16px 'Plus Jakarta Sans', sans-serif;
       border: none;
       background: none;
       color: var(--oc-accent-ink, #7a2c22);
-      max-width: 40vw;
+      min-width: 0;
+      max-width: 45vw;
+      text-overflow: ellipsis;
     }
 
     .model-picker__search-icon {

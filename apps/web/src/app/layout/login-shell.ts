@@ -22,7 +22,10 @@ import { ChattyLogo } from '../shared/chatty-logo';
   styles: `
     .login {
       display: flex;
-      min-height: 100dvh;
+      /* <body> is locked against scrolling (see styles.scss), so the login
+         card sizes itself to the visible area like every other screen. */
+      height: var(--app-height, 100dvh);
+      overflow-y: auto;
       align-items: center;
       justify-content: center;
       padding: 1.5rem;

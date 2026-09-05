@@ -46,6 +46,7 @@ describe('ChatStore', () => {
     // Jasmine randomises spec order, and several specs here seed
     // localStorage. Without this, whether a spec sees a stored model id
     // depends on what ran before it.
+    localStorage.removeItem('chatty-model-choice');
     localStorage.removeItem('oc-model');
     api = new FakeChatApi();
     TestBed.configureTestingModule({
@@ -64,7 +65,7 @@ describe('ChatStore', () => {
   });
 
   it('falls back to the first model when the stored id is stale', () => {
-    localStorage.setItem('oc-model', 'model-does-not-exist');
+    localStorage.setItem('chatty-model-choice', 'model-does-not-exist');
     TestBed.resetTestingModule();
     api = new FakeChatApi();
     TestBed.configureTestingModule({
@@ -72,15 +73,11 @@ describe('ChatStore', () => {
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-a');
-    localStorage.removeItem('oc-model');
+    localStorage.removeItem('chatty-model-choice');
   });
 
   it('prefers glm-5.3-flash over list order when nothing is stored', () => {
     TestBed.resetTestingModule();
-    // The outer beforeEach already built a store, and building one *writes*
-    // the resolved id back to localStorage. Clear it after that, or this spec
-    // is really testing the stored-preference path.
-    localStorage.removeItem('oc-model');
     api = new FakeChatApi();
     // Deliberately not first: models[0] is what the old behaviour picked, and
     // upstream list order is nobody's decision.
@@ -96,7 +93,7 @@ describe('ChatStore', () => {
   });
 
   it('lets a stored choice beat the preferred default', () => {
-    localStorage.setItem('oc-model', 'model-a');
+    localStorage.setItem('chatty-model-choice', 'model-a');
     TestBed.resetTestingModule();
     api = new FakeChatApi();
     api.models = [
@@ -108,11 +105,39 @@ describe('ChatStore', () => {
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-a');
-    localStorage.removeItem('oc-model');
+    localStorage.removeItem('chatty-model-choice');
+  });
+
+  it('does not store the model it resolved on its own', () => {
+    // Persisting a resolved default would make it indistinguishable from a
+    // deliberate pick on the next load, and the default could then never
+    // change for anyone who had opened the app once.
+    expect(localStorage.getItem('chatty-model-choice')).toBeNull();
+    store.selectModel('model-b');
+    expect(localStorage.getItem('chatty-model-choice')).toBe('model-b');
+    localStorage.removeItem('chatty-model-choice');
+  });
+
+  it('ignores — and clears — an id left behind under the legacy key', () => {
+    // Pre-existing browsers have `oc-model` set to whatever was resolved on
+    // their last visit, default included, so it cannot be trusted as a choice.
+    localStorage.setItem('oc-model', 'model-b');
+    TestBed.resetTestingModule();
+    api = new FakeChatApi();
+    api.models = [
+      { id: 'model-b', label: 'Model B', family: 'fam' },
+      { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
+    ];
+    TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+    });
+    store = TestBed.inject(ChatStore);
+    expect(store.selectedModelId()).toBe('glm-5.3-flash');
+    expect(localStorage.getItem('oc-model')).toBeNull();
   });
 
   it('keeps a stored model id that is still present', () => {
-    localStorage.setItem('oc-model', 'model-b');
+    localStorage.setItem('chatty-model-choice', 'model-b');
     TestBed.resetTestingModule();
     api = new FakeChatApi();
     TestBed.configureTestingModule({
@@ -120,7 +145,7 @@ describe('ChatStore', () => {
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-b');
-    localStorage.removeItem('oc-model');
+    localStorage.removeItem('chatty-model-choice');
   });
 
   it('loads a conversation detail on select', () => {
