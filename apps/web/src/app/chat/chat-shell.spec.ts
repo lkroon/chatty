@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { concat, delay, of, type Observable } from 'rxjs';
+import { Subject, of, type Observable } from 'rxjs';
 import type {
   ChatEvent,
   ChatRequest,
@@ -21,6 +21,20 @@ class TestChatApi implements ChatApi {
     messages: [],
   };
 
+  /**
+   * The in-flight response, driven by the test one event at a time.
+   *
+   * This used to be a fixed pipeline of rxjs `delay()`s that the test raced
+   * with `setTimeout`s of its own, sampling the DOM at the exact millisecond
+   * each event was scheduled to arrive. Whichever timer the browser happened
+   * to run first decided the result, so on a loaded CI runner the spec failed
+   * for reasons that had nothing to do with the component. Nothing here needs
+   * wall-clock time: "progressively" means each event renders on its own, and
+   * pushing them by hand tests that directly.
+   */
+  readonly events$ = new Subject<ChatEvent>();
+  lastRequest: ChatRequest | null = null;
+
   listModels(): Observable<Model[]> {
     return of([{ id: 'test-model', label: 'Test model', family: 'test' }]);
   }
@@ -38,30 +52,22 @@ class TestChatApi implements ChatApi {
   }
 
   sendChat(request: ChatRequest): Observable<ChatEvent> {
-    const conversationId = request.conversationId ?? 'test-conversation';
-    const events: ChatEvent[] = [
-      { type: 'meta', conversationId, messageId: 'test-message' },
-      { type: 'delta', text: `You said: "${request.content}"` },
-      { type: 'delta', text: ' streamed' },
-      { type: 'done', finishReason: 'stop' },
-    ];
-    return concat(
-      of(events[0]),
-      of(events[1]).pipe(delay(35)),
-      of(events[2]).pipe(delay(35)),
-      of(events[3]).pipe(delay(35)),
-    ).pipe(delay(150));
+    this.lastRequest = request;
+    return this.events$.asObservable();
   }
 }
 
 describe('ChatShell', () => {
+  let api: TestChatApi;
+
   beforeEach(() => {
+    api = new TestChatApi();
     TestBed.configureTestingModule({
       imports: [ChatShell],
       providers: [provideZonelessChangeDetection(), provideRouter([])],
     }).overrideComponent(ChatShell, {
       set: {
-        providers: [{ provide: CHAT_API, useClass: TestChatApi }, ChatStore],
+        providers: [{ provide: CHAT_API, useValue: api }, ChatStore],
       },
     });
   });
@@ -80,7 +86,7 @@ describe('ChatShell', () => {
     expect(el.textContent).toContain('Welcome to chatty');
   });
 
-  it('renders streamed deltas progressively into the thread as they arrive', async () => {
+  it('renders streamed deltas progressively into the thread as they arrive', () => {
     const fixture = TestBed.createComponent(ChatShell);
     fixture.detectChanges();
 
@@ -94,29 +100,29 @@ describe('ChatShell', () => {
     form.dispatchEvent(new Event('submit', { cancelable: true }));
     fixture.detectChanges();
 
-    // meta event fires after 150ms; nothing streamed into the thread yet.
-    await sleep(150);
-    fixture.detectChanges();
-    const afterMeta = el.querySelector('.markdown-body')?.textContent ?? '';
+    expect(api.lastRequest?.content).toBe('hello world');
 
-    // Advance a couple of delta ticks and confirm the streamed text grows
-    // incrementally rather than appearing all at once.
-    await sleep(35);
+    const streamed = () => el.querySelector('.markdown-body')?.textContent ?? '';
+
+    // meta opens the response; nothing has streamed into the thread yet.
+    api.events$.next({ type: 'meta', conversationId: 'test-conversation', messageId: 'm1' });
     fixture.detectChanges();
-    const afterOneDelta = el.querySelector('.markdown-body')?.textContent ?? '';
+    const afterMeta = streamed();
+
+    // Each delta has to reach the DOM on its own — the whole point of
+    // streaming is that the text grows rather than appearing all at once.
+    api.events$.next({ type: 'delta', text: 'You said: "hello world"' });
+    fixture.detectChanges();
+    const afterOneDelta = streamed();
     expect(afterOneDelta.length).toBeGreaterThan(afterMeta.length);
 
-    await sleep(35);
+    api.events$.next({ type: 'delta', text: ' streamed' });
     fixture.detectChanges();
-    const afterTwoDeltas = el.querySelector('.markdown-body')?.textContent ?? '';
+    const afterTwoDeltas = streamed();
     expect(afterTwoDeltas.length).toBeGreaterThan(afterOneDelta.length);
 
-    await sleep(100);
+    api.events$.next({ type: 'done', finishReason: 'stop' });
     fixture.detectChanges();
-    expect(el.textContent).toContain('You said: "hello world"');
+    expect(el.textContent).toContain('You said: "hello world" streamed');
   });
 });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

@@ -4,7 +4,19 @@ import type { ChatEvent, ConversationListItem, Message, Model, ToolCallChip } fr
 
 import { CHAT_API } from './chat-api';
 
-const MODEL_STORAGE_KEY = 'oc-model';
+/**
+ * Holds an *explicit* model choice only — nothing else ever writes it.
+ *
+ * The key is deliberately not the old `oc-model`. That one was written on
+ * every load with whatever model had been resolved, default included, so a
+ * browser that had ever opened the app carried an id indistinguishable from
+ * a deliberate pick, and it beat the preferred default forever. There is no
+ * way to tell those two apart after the fact, so the old key is abandoned
+ * (and cleared): everyone falls back to the default once, and from then on
+ * only a real choice is stored.
+ */
+const MODEL_STORAGE_KEY = 'chatty-model-choice';
+const LEGACY_MODEL_STORAGE_KEY = 'oc-model';
 
 /**
  * What a first-time visitor gets, before they have ever picked a model.
@@ -59,17 +71,18 @@ export class ChatStore {
     this.api.listModels().subscribe({
       next: (models) => {
         this.models.set(models);
-        const stored = readLocalStorage(MODEL_STORAGE_KEY);
+        removeLocalStorage(LEGACY_MODEL_STORAGE_KEY);
+        const chosen = readLocalStorage(MODEL_STORAGE_KEY);
         const has = (id: string | null) => !!id && models.some((m) => m.id === id);
-        const next = has(stored)
-          ? stored!
-          : has(PREFERRED_DEFAULT_MODEL_ID)
-            ? PREFERRED_DEFAULT_MODEL_ID
-            : (models[0]?.id ?? '');
-        this.selectedModelId.set(next);
-        if (next) {
-          writeLocalStorage(MODEL_STORAGE_KEY, next);
-        }
+        // Nothing is written back here: resolving a default is not a choice,
+        // and storing it would turn it into one on the next load.
+        this.selectedModelId.set(
+          has(chosen)
+            ? chosen!
+            : has(PREFERRED_DEFAULT_MODEL_ID)
+              ? PREFERRED_DEFAULT_MODEL_ID
+              : (models[0]?.id ?? ''),
+        );
       },
       error: () => this.error.set('Failed to load models.'),
     });
@@ -248,6 +261,14 @@ function readLocalStorage(key: string): string | null {
 function writeLocalStorage(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable (private mode, disabled, etc.) — non-fatal.
+  }
+}
+
+function removeLocalStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
   } catch {
     // Storage unavailable (private mode, disabled, etc.) — non-fatal.
   }

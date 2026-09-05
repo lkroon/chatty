@@ -36,7 +36,9 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
       align-items: flex-end;
       gap: 0.5rem;
       padding: 0.6rem 0.85rem;
-      padding-bottom: calc(0.6rem + env(safe-area-inset-bottom));
+      /* --kb-safe-bottom is env(safe-area-inset-bottom) normally and 0 while
+         the keyboard is up — see core/viewport-fit.ts. */
+      padding-bottom: calc(0.6rem + var(--kb-safe-bottom, 0px));
       border-top: 1px solid var(--oc-border, #dcece4);
       background: var(--oc-surface, #fff);
       box-sizing: border-box;
@@ -44,12 +46,19 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
 
     textarea {
       flex: 1;
+      /* min-width: 0 lets the textarea shrink below its intrinsic width.
+         Without it a flex item refuses to go under min-content, the row
+         overflows, and the send button is pushed off the right edge. */
+      min-width: 0;
       resize: none;
       overflow-y: auto;
       max-height: ${MAX_TEXTAREA_HEIGHT_PX}px;
       min-height: 2.4em;
       font: inherit;
-      font-size: 0.9rem;
+      /* 16px exactly, and not a hair less: iOS Safari zooms the page in on
+         focus for any smaller field, which magnifies the layout and shoves
+         the send button (and the top bar) outside the visible area. */
+      font-size: 16px;
       padding: 0.6em 1em;
       border-radius: 20px;
       border: 1px solid var(--oc-border, #dcece4);

@@ -1,6 +1,14 @@
+// Pinned to the *visible* area, not the layout viewport: --app-height and
+// --app-offset-top are republished by core/viewport-fit.ts whenever the
+// on-screen keyboard opens, closes or shifts the page. That is what keeps
+// the top bar (history button + model picker) and the composer on screen
+// with the keyboard up, on a screen as short as an iPhone 13 mini's.
 :host {
-  display: block;
-  height: 100dvh;
+  position: fixed;
+  top: var(--app-offset-top, 0px);
+  left: var(--app-offset-left, 0px);
+  width: 100%;
+  height: var(--app-height, 100dvh);
   color: var(--oc-text, #23262b);
   background: var(--oc-bg, #eef6f2);
 }
@@ -9,6 +17,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
 .topbar {
@@ -19,6 +28,9 @@
   padding-top: calc(0.6rem + env(safe-area-inset-top));
   border-bottom: 1px solid var(--oc-border, #dcece4);
   background: var(--oc-surface, #fff);
+  // A fixed-size row of a full-height flex column, so it stays put by
+  // construction — no sticky positioning needed once the shell itself is
+  // pinned to the visible area.
   flex-shrink: 0;
 }
 
@@ -53,10 +65,21 @@
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--oc-accent-ink, #7a2c22);
+  flex-shrink: 0;
+}
+
+// Under ~380px (iPhone 13 mini is 375pt) the wordmark, the menu button and
+// the model picker cannot all have their natural width. The wordmark is the
+// only one of the three that isn't a control, so it is the one that goes.
+@media (max-width: 400px) {
+  .brand span {
+    display: none;
+  }
 }
 
 .spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .body {
@@ -92,7 +115,7 @@
   transition: transform 0.2s ease;
   display: flex;
   flex-direction: column;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--kb-safe-bottom, 0px);
 }
 
 .sidebar__head {

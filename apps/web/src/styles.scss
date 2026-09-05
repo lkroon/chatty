@@ -26,6 +26,15 @@
   --oc-active: #bfe3d3;
   --oc-error: #d64545;
   color-scheme: light;
+
+  /* Published by core/viewport-fit.ts once the app boots; these are the
+     no-JS / no-visualViewport fallbacks. --kb-safe-bottom drops to 0 while
+     the on-screen keyboard is up, because the home-indicator inset it
+     normally carries is hidden behind the keyboard anyway. */
+  --app-height: 100dvh;
+  --app-offset-top: 0px;
+  --app-offset-left: 0px;
+  --kb-safe-bottom: env(safe-area-inset-bottom);
 }
 
 *,
@@ -45,6 +54,15 @@ body {
 
 body {
   margin: 0;
+  /* The document itself never scrolls: every screen sizes itself to the
+     visible area and scrolls its own inner region instead. Without this,
+     iOS scrolls the whole page to reveal a focused input and drags the
+     sticky top bar (history button, model picker) off screen with it. */
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-bg);
   color: var(--color-text);
   font-family:
