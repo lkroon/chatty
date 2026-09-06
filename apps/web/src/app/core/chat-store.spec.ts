@@ -5,6 +5,7 @@ import type { ChatEvent, ConversationDetail, ConversationListItem, Model } from 
 
 import { CHAT_API, ChatApi } from './chat-api';
 import { ChatStore } from './chat-store';
+import { testProposalCard } from './test-proposal';
 
 class FakeChatApi implements ChatApi {
   models: Model[] = [
@@ -35,6 +36,12 @@ class FakeChatApi implements ChatApi {
   }
   sendChat() {
     return this.chatEvents$.asObservable();
+  }
+  confirmProposal() {
+    return of(testProposalCard({ status: 'executed', confirmable: false }));
+  }
+  discardProposal() {
+    return of(testProposalCard({ status: 'discarded', confirmable: false }));
   }
 }
 
