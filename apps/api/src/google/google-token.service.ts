@@ -39,7 +39,28 @@ export class GoogleTokenService {
       throw new NotConnectedError();
     }
 
-    const refreshToken = decryptToken(connection.refreshTokenSealed, requireEncryptionKey());
+    let refreshToken: string;
+    try {
+      refreshToken = decryptToken(connection.refreshTokenSealed, requireEncryptionKey());
+    } catch (err) {
+      // A misconfigured key (unset, or the wrong byte length once decoded —
+      // both surfaced by token-crypto.ts as "GOOGLE_TOKEN_ENCRYPTION_KEY ...")
+      // is an ops problem affecting every account, not a reason to single
+      // this one out — rethrow as-is rather than wiping its connection.
+      // Anything else here means THIS row's sealed value can't be read under
+      // an otherwise-valid key — most commonly because
+      // GOOGLE_TOKEN_ENCRYPTION_KEY was rotated (documented in .env.example
+      // as making existing connections undecryptable) — so this account
+      // degrades to "connect again" instead of an unhandled 500 that never
+      // recovers.
+      if (err instanceof Error && err.message.startsWith('GOOGLE_TOKEN_ENCRYPTION_KEY ')) {
+        throw err;
+      }
+      this.logger.warn(`Google refresh token undecryptable for account ${accountId}; clearing connection`);
+      this.cache.delete(accountId);
+      await this.connections.remove(accountId);
+      throw new NotConnectedError('the stored Google connection could not be decrypted');
+    }
 
     let minted: { accessToken: string; expiresInSeconds: number };
     try {

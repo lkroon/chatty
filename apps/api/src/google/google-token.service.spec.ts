@@ -75,6 +75,39 @@ describe('GoogleTokenService', () => {
     expect(repo.removed).toEqual([]);
   });
 
+  it('deletes the connection and reports not-connected when the stored token is undecryptable', async () => {
+    // Simulates a rotated GOOGLE_TOKEN_ENCRYPTION_KEY: the sealed value was
+    // produced under a different key than the one now configured.
+    repo.connection = {
+      accountId: 1,
+      refreshTokenSealed: encryptToken('rt', randomBytes(32).toString('base64')),
+      scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    };
+    await expect(service.getAccessToken(1)).rejects.toBeInstanceOf(NotConnectedError);
+    expect(repo.removed).toEqual([1]);
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not delete the connection or mask the error when the encryption key is entirely unset', async () => {
+    delete process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
+    try {
+      await expect(service.getAccessToken(1)).rejects.toThrow(/GOOGLE_TOKEN_ENCRYPTION_KEY is not set/);
+      expect(repo.removed).toEqual([]);
+    } finally {
+      process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = key;
+    }
+  });
+
+  it('does not delete the connection when the configured key is the wrong length', async () => {
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = randomBytes(16).toString('base64');
+    try {
+      await expect(service.getAccessToken(1)).rejects.toThrow(/must decode to exactly 32 bytes/);
+      expect(repo.removed).toEqual([]);
+    } finally {
+      process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = key;
+    }
+  });
+
   it('keeps one account cached token from serving another account', async () => {
     refreshSpy.mockResolvedValueOnce({ accessToken: 'at-1', expiresInSeconds: 3600 });
     refreshSpy.mockResolvedValueOnce({ accessToken: 'at-2', expiresInSeconds: 3600 });
