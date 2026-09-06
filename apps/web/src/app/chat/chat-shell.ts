@@ -4,6 +4,7 @@ import { CHAT_API } from '../core/chat-api';
 import { ChatStore } from '../core/chat-store';
 import { RealChatApi } from '../core/real-chat-api';
 import { ChattyLogo } from '../shared/chatty-logo';
+import { TodayChatSwitch } from '../shared/today-chat-switch';
 import { Composer } from './composer';
 import { ConversationList } from './conversation-list';
 import { MessageThread } from './message-thread';
@@ -19,7 +20,7 @@ import { ModelPicker } from './model-picker';
  */
 @Component({
   selector: 'app-chat-shell',
-  imports: [ModelPicker, ConversationList, MessageThread, Composer, ChattyLogo],
+  imports: [ModelPicker, ConversationList, MessageThread, Composer, ChattyLogo, TodayChatSwitch],
   providers: [{ provide: CHAT_API, useClass: RealChatApi }, ChatStore],
   templateUrl: './chat-shell.html',
   styleUrl: './chat-shell.scss',

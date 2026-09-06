@@ -60,21 +60,7 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-family: 'Baloo 2', sans-serif;
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--oc-accent-ink, #7a2c22);
   flex-shrink: 0;
-}
-
-// Under ~380px (iPhone 13 mini is 375pt) the wordmark, the menu button and
-// the model picker cannot all have their natural width. The wordmark is the
-// only one of the three that isn't a control, so it is the one that goes.
-@media (max-width: 400px) {
-  .brand span {
-    display: none;
-  }
 }
 
 .spacer {
