@@ -1,6 +1,13 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Subscription } from 'rxjs';
-import type { ChatEvent, ConversationListItem, Message, Model, ToolCallChip } from '@contracts';
+import { Observable, Subscription } from 'rxjs';
+import type {
+  ChatEvent,
+  ConversationListItem,
+  Message,
+  Model,
+  ProposalCard,
+  ToolCallChip,
+} from '@contracts';
 
 import { CHAT_API } from './chat-api';
 
@@ -58,6 +65,9 @@ export class ChatStore {
   readonly streamingThinking = signal(false);
 
   readonly error = signal<string | null>(null);
+
+  /** Proposal ids with a confirm/discard in flight, so a card can't be double-tapped. */
+  private readonly proposalBusy = signal<ReadonlySet<string>>(new Set());
 
   private pendingMessageId: string | null = null;
   private streamSub?: Subscription;
@@ -187,6 +197,70 @@ export class ChatStore {
     this.streamingText.set('');
     this.streamingToolCalls.set([]);
     this.streamingThinking.set(false);
+  }
+
+  isProposalBusy(id: string): boolean {
+    return this.proposalBusy().has(id);
+  }
+
+  confirmProposal(id: string): void {
+    this.runProposalAction(id, this.api.confirmProposal(id));
+  }
+
+  discardProposal(id: string): void {
+    this.runProposalAction(id, this.api.discardProposal(id));
+  }
+
+  /**
+   * The server returns the whole updated card, and it is written straight
+   * back over the old one — the client never guesses what the new status is.
+   */
+  private runProposalAction(id: string, action: Observable<ProposalCard>): void {
+    if (this.isProposalBusy(id)) {
+      return;
+    }
+    this.setProposalBusy(id, true);
+    this.error.set(null);
+    action.subscribe({
+      next: (card) => {
+        this.setProposalBusy(id, false);
+        this.applyProposal(card);
+      },
+      error: (err: unknown) => {
+        this.setProposalBusy(id, false);
+        // The API port already unwrapped the server's message for these two
+        // calls — "reconnect Google" is the whole point of the 409.
+        this.error.set(
+          (err as Error)?.message ?? 'That could not be completed. Please try again.',
+        );
+      },
+    });
+  }
+
+  private setProposalBusy(id: string, busy: boolean): void {
+    this.proposalBusy.update((ids) => {
+      const next = new Set(ids);
+      if (busy) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  private applyProposal(card: ProposalCard): void {
+    const replace = (chips: ToolCallChip[]): ToolCallChip[] =>
+      chips.map((chip) => (chip.proposal?.id === card.id ? { ...chip, proposal: card } : chip));
+
+    this.messages.update((msgs) =>
+      msgs.map((msg) =>
+        msg.toolCalls?.some((chip) => chip.proposal?.id === card.id)
+          ? { ...msg, toolCalls: replace(msg.toolCalls) }
+          : msg,
+      ),
+    );
+    this.streamingToolCalls.update(replace);
   }
 
   private handleEvent(event: ChatEvent): void {

@@ -23,8 +23,10 @@ import type { ToolCallChip } from '@contracts';
           <span class="spinner" aria-hidden="true"></span>
         } @else if (chip().name === 'web_search') {
           🔍
-        } @else {
+        } @else if (chip().name === 'web_fetch') {
           🔗
+        } @else {
+          📋
         }
       </span>
       <span class="tool-chip__label">{{ chip().label }}</span>

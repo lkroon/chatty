@@ -3,11 +3,12 @@ import { Component, ElementRef, afterRenderEffect, inject, viewChild } from '@an
 import { ChatStore } from '../core/chat-store';
 import { ViewportFit } from '../core/viewport-fit';
 import { MessageBubble } from './message-bubble';
+import { ProposalCard } from './proposal-card';
 import { ToolChip } from './tool-chip';
 
 @Component({
   selector: 'app-message-thread',
-  imports: [MessageBubble, ToolChip],
+  imports: [MessageBubble, ToolChip, ProposalCard],
   template: `
     <div class="thread" #scrollEl>
       @if (store.isLoadingConversation()) {
@@ -17,7 +18,16 @@ import { ToolChip } from './tool-chip';
         @if (m.toolCalls?.length) {
           <div class="tool-chips">
             @for (chip of m.toolCalls; track chip.callId) {
-              <app-tool-chip [chip]="chip" />
+              @if (chip.proposal; as proposal) {
+                <app-proposal-card
+                  [card]="proposal"
+                  [busy]="store.isProposalBusy(proposal.id)"
+                  (confirmed)="store.confirmProposal(proposal.id)"
+                  (discarded)="store.discardProposal(proposal.id)"
+                />
+              } @else {
+                <app-tool-chip [chip]="chip" />
+              }
             }
           </div>
         }
@@ -27,7 +37,16 @@ import { ToolChip } from './tool-chip';
         @if (store.streamingToolCalls().length) {
           <div class="tool-chips">
             @for (chip of store.streamingToolCalls(); track chip.callId) {
-              <app-tool-chip [chip]="chip" />
+              @if (chip.proposal; as proposal) {
+                <app-proposal-card
+                  [card]="proposal"
+                  [busy]="store.isProposalBusy(proposal.id)"
+                  (confirmed)="store.confirmProposal(proposal.id)"
+                  (discarded)="store.discardProposal(proposal.id)"
+                />
+              } @else {
+                <app-tool-chip [chip]="chip" />
+              }
             }
           </div>
         }

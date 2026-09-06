@@ -84,4 +84,16 @@ describe('ToolChip', () => {
     expect(el.querySelector('.tool-chip__sources')).toBeNull();
     expect(el.querySelector('.tool-chip')!.classList).not.toContain('tool-chip--expandable');
   });
+
+  it('shows the proposal icon for a write tool that never produced a card', () => {
+    setChip({
+      callId: 'c1',
+      name: 'create_task',
+      status: 'failed',
+      label: "Couldn't propose that task",
+      sources: [],
+    });
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.tool-chip__icon')!.textContent).toContain('📋');
+  });
 });
