@@ -66,6 +66,11 @@ export async function fetchTodaysEvents(
   const params = new URLSearchParams({
     timeMin: `${isoDate}T00:00:00${startOffset}`,
     timeMax: `${endDate}T00:00:00${endOffset}`,
+    // Without this Google returns start/end in the *calendar's* default zone,
+    // not ours. briefing-shell.ts renders the HH:MM straight out of that
+    // string, so a calendar set to another zone would print times that look
+    // local but aren't — wrong, and silently so.
+    timeZone,
     singleEvents: 'true',
     orderBy: 'startTime',
     maxResults: String(MAX_EVENTS),

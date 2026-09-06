@@ -69,7 +69,10 @@ describe('GoogleConnectController', () => {
 
   it('callback() stores a sealed refresh token and clears the state', async () => {
     jest.spyOn(oauth, 'exchangeCodeForTokens').mockResolvedValue({
-      refreshToken: 'rt',
+      // Long and distinctive on purpose. A short token like 'rt' collides with
+      // the random base64 of the sealed value roughly once every 116 runs,
+      // which reads as a flaky test rather than the leak this asserts against.
+      refreshToken: '1//refresh-token-value',
       accessToken: 'at',
       expiresInSeconds: 3600,
       scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
@@ -81,7 +84,7 @@ describe('GoogleConnectController', () => {
     expect(connections.upsert).toHaveBeenCalledTimes(1);
     const [accountId, sealed, scopes] = connections.upsert.mock.calls[0];
     expect(accountId).toBe(1);
-    expect(sealed).not.toContain('rt');
+    expect(sealed).not.toContain('refresh-token-value');
     expect(scopes).toEqual(['https://www.googleapis.com/auth/calendar.readonly']);
     expect(session.googleConnectState).toBeUndefined();
     expect(res.redirectedTo).toBe('https://chat.example.com/?connect=ok');

@@ -20,6 +20,7 @@ describe('fetchTodaysEvents', () => {
     const parsed = new URL(url);
     expect(parsed.pathname).toBe('/calendar/v3/calendars/primary/events');
     expect(parsed.searchParams.get('singleEvents')).toBe('true');
+    expect(parsed.searchParams.get('timeZone')).toBe('Europe/Amsterdam');
     expect(parsed.searchParams.get('orderBy')).toBe('startTime');
     expect(parsed.searchParams.get('timeMin')).toBe('2026-09-05T00:00:00+02:00');
     expect(parsed.searchParams.get('timeMax')).toBe('2026-09-06T00:00:00+02:00');
