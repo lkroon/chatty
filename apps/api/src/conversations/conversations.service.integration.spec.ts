@@ -8,6 +8,7 @@ import {
   TestPostgres,
 } from '../db/test-postgres';
 import { ConversationsService } from './conversations.service';
+import { ProposalsRepository } from '../proposals/proposals.repository';
 
 // Integration test against a real, ephemeral postgres:16 container (see
 // db/test-postgres.ts). Skipped (not failed) when Docker isn't reachable.
@@ -45,7 +46,7 @@ describeIfDocker('ConversationsService (integration)', () => {
     await runMigrations(pg.url);
     pool = new Pool({ connectionString: pg.url });
     db = drizzle(pool, { schema });
-    service = new ConversationsService(db);
+    service = new ConversationsService(db, new ProposalsRepository(db));
   }, 120_000);
 
   afterAll(async () => {
@@ -55,7 +56,7 @@ describeIfDocker('ConversationsService (integration)', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'TRUNCATE messages, conversations, accounts RESTART IDENTITY CASCADE',
+      'TRUNCATE message_tool_calls, proposals, messages, conversations, accounts RESTART IDENTITY CASCADE',
     );
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO accounts (email) VALUES ('a@example.com'), ('b@example.com') RETURNING id`,
@@ -344,5 +345,77 @@ describeIfDocker('ConversationsService (integration)', () => {
       [conversationId],
     );
     expect(rows.length).toBe(0);
+  });
+
+  it('rebuilds a chip\'s proposal card from the row, not from what was stored', async () => {
+    const repository = new ProposalsRepository(db);
+    const { conversationId, assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'glm-5.3',
+      userContent: 'book the dentist',
+    });
+    const proposal = await repository.create({
+      accountId: accountAId,
+      conversationId,
+      kind: 'calendar_event',
+      payload: {
+        title: 'Dentist',
+        start: '2026-09-08T15:00:00',
+        end: '2026-09-08T15:45:00',
+        location: null,
+        description: null,
+      },
+    });
+
+    await service.finalizeAssistantMessage({
+      assistantMessageId,
+      content: 'I have proposed that.',
+      aborted: false,
+    });
+    await service.saveToolCalls({
+      assistantMessageId,
+      chips: [
+        {
+          callId: 'call-1',
+          name: 'create_calendar_event',
+          status: 'done',
+          label: 'Proposed: Dentist',
+          sources: [],
+          proposal: {
+            id: proposal.id,
+            kind: 'calendar_event',
+            status: 'pending',
+            title: 'Dentist',
+            fields: [],
+            link: null,
+            error: null,
+            confirmable: true,
+            expiresAt: '2026-09-08T09:59:00.000Z',
+            conversationId,
+          },
+        },
+      ],
+    });
+
+    // The world moves on: the user confirms, and the row becomes executed.
+    await repository.claimForExecution({
+      id: proposal.id,
+      accountId: accountAId,
+      allowRetry: false,
+    });
+    await repository.markExecuted(proposal.id, {
+      externalId: 'evt-1',
+      link: 'https://cal/evt-1',
+    });
+
+    const detail = await service.getDetailForAccount(String(accountAId), conversationId);
+    const assistant = detail.messages.find((m) => m.role === 'assistant')!;
+    const chip = assistant.toolCalls![0];
+    expect(chip.proposal!.status).toBe('executed');
+    expect(chip.proposal!.confirmable).toBe(false);
+    expect(chip.proposal!.link).toBe('https://cal/evt-1');
+    // The card is rebuilt from the payload, so its fields are present even
+    // though an empty array was what got stored on the chip.
+    expect(chip.proposal!.fields.length).toBeGreaterThan(0);
   });
 });
