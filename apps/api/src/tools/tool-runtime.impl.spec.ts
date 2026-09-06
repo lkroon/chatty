@@ -6,7 +6,13 @@ function fakeProvider(fn: (query: string) => Promise<SearchResult[]>): SearchPro
   return { search: (query) => fn(query) };
 }
 
+const ACTOR = { accountId: 1, conversationId: 'c1' };
+
 describe('ToolRuntimeImpl', () => {
+  beforeEach(() => {
+    delete process.env.GOOGLE_WRITE_TOOLS_ENABLED;
+  });
+
   it('definitions() returns the frozen web_search/web_fetch schemas', () => {
     const runtime = new ToolRuntimeImpl(fakeProvider(async () => []));
     const names = runtime.definitions().map((d) => d.function.name);
@@ -25,6 +31,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'web_search', rawArguments: JSON.stringify({ query: 'hacker news' }) },
       new ToolBudget(),
       new AbortController().signal,
+      ACTOR,
     );
     expect(seenQuery).toBe('hacker news');
     expect(result.status).toBe('done');
@@ -43,6 +50,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
       new ToolBudget(),
       new AbortController().signal,
+      ACTOR,
     );
     expect(result.status).toBe('failed');
     expect(result.content).toContain('provider unreachable');
@@ -54,6 +62,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'web_search', rawArguments: '{not json' },
       new ToolBudget(),
       new AbortController().signal,
+      ACTOR,
     );
     expect(result.status).toBe('failed');
   });
@@ -64,6 +73,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'delete_everything', rawArguments: '{}' },
       new ToolBudget(),
       new AbortController().signal,
+      ACTOR,
     );
     expect(result.status).toBe('failed');
     expect(result.content).toContain('Unknown tool');
@@ -79,6 +89,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
       budget,
       new AbortController().signal,
+      ACTOR,
     );
     // The result is wrapped in the untrusted-content frame, which is added
     // after the claim: exactly 5 characters of tool output survive, and the
@@ -103,6 +114,7 @@ describe('ToolRuntimeImpl', () => {
       { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
       new ToolBudget(),
       new AbortController().signal,
+      ACTOR,
     );
     expect(result.status).toBe('done');
     expect(result.content).toMatch(/^<untrusted-web-content>/);
