@@ -1,6 +1,9 @@
 # Google Briefing (Calendar + Gmail, read-only) Implementation Plan
 
-> **For executors:** Use the `executing-plans` skill to implement this task-by-task. Steps use `- [ ]` checkboxes for tracking.
+> **For executors:** Use the `executing-plans` skill. Read **Conventions every task must follow** and
+> **Execution order and parallelism** before starting anything — the tasks are numbered but they are
+> *not* meant to be run one after another, and the wave table says which ones run together and which
+> files each one is allowed to touch. Steps use `- [ ]` checkboxes for tracking.
 
 **Goal:** Make **Today** the landing screen of Chatty — an LLM-written summary of today's Google Calendar events and recent Gmail for the logged-in account — with chat one tap away behind a Today | Chat switch.
 
@@ -14,7 +17,12 @@
 
 ## Prerequisites (human, do these first — the code cannot)
 
-These are not code tasks. An executor must stop and ask the operator to confirm each is done before Task 14.
+These are not code tasks.
+
+**When to gate on them:** nothing in Tasks 0–15 touches Google or the encryption key — it is all
+code, unit tests and stubbed `fetch`. The executor must stop and ask the operator to confirm P1–P5
+**before Task 16 Step 5 (the manual smoke test), and not before.** Blocking earlier stalls the whole
+build waiting on a human for no reason.
 
 - [ ] **P1** — In Google Cloud Console → *APIs & Services → Library*, enable **Google Calendar API** and **Gmail API** for the existing project.
 - [ ] **P2** — *APIs & Services → Credentials* → the existing OAuth 2.0 Client ID → **Authorized redirect URIs** → add both:
@@ -40,16 +48,20 @@ These are not code tasks. An executor must stop and ask the operator to confirm 
 
 | File | Single responsibility |
 |---|---|
+| `errors.ts` | `NotConnectedError`, the one error type both this module and the briefing raise. No imports. |
 | `token-crypto.ts` | AES-256-GCM encrypt/decrypt of one string. No DB, no Google. |
 | `token-crypto.spec.ts` | Unit tests for the above. |
+| `session-account.ts` | `requireAccountId(req)` — the session's account id as a number, or 401. |
 | `google-connections.repository.ts` | Read/write the `google_connections` row for one account. |
 | `google-connections.repository.integration.spec.ts` | Against a real Postgres container. |
 | `google-oauth.ts` | Pure functions: build consent URL, exchange code, refresh access token. |
 | `google-oauth.spec.ts` | Unit tests with a stubbed `fetch`. |
 | `google-token.service.ts` | Mint + in-process cache an access token for an account. |
 | `google-token.service.spec.ts` | Unit tests with a fake repository. |
-| `google-connect.controller.ts` | `GET /auth/google/connect`, `GET /auth/google/connect/callback`, `GET /api/google/status`, `DELETE /api/google/connection`. |
+| `google-connect.controller.ts` | The unauthenticated-path half: `GET /auth/google/connect`, `GET /auth/google/connect/callback`. |
 | `google-connect.controller.spec.ts` | Unit tests. |
+| `google-connection.controller.ts` | The `/api` half: `GET /api/google/status`, `DELETE /api/google/connection`. |
+| `google-connection.controller.spec.ts` | Unit tests. |
 | `google.module.ts` | Wires the above; exports `GoogleTokenService`. |
 
 **New — `apps/api/src/briefing/` (owns: fetching the sections and summarizing them)**
@@ -83,7 +95,7 @@ These are not code tasks. An executor must stop and ask the operator to confirm 
 |---|---|
 | `apps/api/src/db/schema.ts` | Add `googleConnections` table. |
 | `apps/api/drizzle/0002_*.sql` | Generated migration. |
-| `apps/api/src/app.module.ts` | Import `GoogleModule`, `BriefingModule`. |
+| `apps/api/src/app.module.ts` | Import `GoogleModule`, `BriefingModule`. **Task 11 owns this file — no other task touches it.** |
 | `libs/contracts/src/index.ts` | `export * from './briefing';` |
 | `apps/web/src/app/app.routes.ts` | Today at `''`, chat at `/chat`. |
 | `apps/web/src/app/chat/chat-shell.html`, `.ts`, `.scss` | The Today \| Chat switch in the top bar, in place of the wordmark. |
@@ -93,12 +105,90 @@ These are not code tasks. An executor must stop and ask the operator to confirm 
 
 ## Conventions every task must follow
 
-- API tests: `npm run test -w apps/api` from the repo root. One spec: `npm run test -w apps/api -- src/google/token-crypto.spec.ts`.
+**How to run things**
+
+- Run every command from the **repo root**, never from inside `apps/`.
+- API tests: `npm run test -w apps/api`. One spec: `npm run test -w apps/api -- src/google/token-crypto.spec.ts`.
+- **When your task is running in parallel with other tasks (see the wave table below), add
+  `--ignore-scripts`:** `npm run test -w apps/api --ignore-scripts -- src/google/token-crypto.spec.ts`.
+  Without it, npm's `pretest` hook rebuilds `libs/contracts/dist` on every run, and two agents doing
+  that at the same time race on the same output directory and fail in confusing ways. Wave 0 builds
+  contracts once; after that the build is already there.
 - Web tests: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless`.
-- Lint before every commit: `npm run lint`.
+- Lint: `npm run lint`. Every task ends with a lint step before its commit.
+
+**Hard rules — these override any judgement call**
+
+- **Do not modify any file that is not listed in your task's `Files:` block.** If a task seems to
+  need a change elsewhere, stop and report it instead of making it. Another task almost certainly
+  owns that file.
+- **If a step's actual output does not match its `Expected:` line, stop and report.** Do not improvise
+  a fix, do not skip the step, do not "make the test pass" by changing the assertion.
+- Do not run `git add -A` or `git add .`. Every commit in this plan lists its paths explicitly; use
+  exactly those.
+- Do not generate a drizzle migration in any task except Task 3.
+
+**Code conventions**
+
 - Never `console.log`; use Nest's `Logger` like `tool-runtime.impl.ts:8` does.
 - Never log a token, a refresh token, an access token, an email body, or a message snippet.
 - Import shared types from `@contracts/...`, never by relative path into `libs/`.
+
+---
+
+## Execution order and parallelism
+
+The tasks below are **not** a serial list. Most of them touch disjoint files and can run at the same
+time. Run them in the waves below; every task in a wave starts together and the wave ends when all of
+them are green.
+
+| Wave | Tasks, run in parallel | Why it can't start earlier |
+|---|---|---|
+| **0** | Task 0 (branch), then Task 1 (contracts) | Everything imports `@contracts/briefing`. |
+| **1** | Task 2, Task 3, Task 5, Task 8, Task 9, Task 12, Task 13, Task 14a | Each needs only Task 1 (or nothing). |
+| **2** | Task 4, Task 10, Task 14b | 4 needs the table (3); 10 needs the sources (8, 9) and `errors.ts` (5); 14b needs the port (13) and the switch (14a). |
+| **3** | Task 6 **and** Task 7 (one agent, in that order), Task 15 | 6 needs 2 + 4 + 5; 7 needs 6. 15 needs 14a + 14b. |
+| **4** | Task 11 | Needs `GoogleModule` (7) and `BriefingService` (10). Task 11 is also the only task that edits `app.module.ts`. |
+| **5** | Task 16 | Needs everything. |
+
+Critical path: 0 → 3 → 4 → 6/7 → 11 → 16. Six waves instead of sixteen serial tasks, peak
+concurrency eight.
+
+**Rules that make parallel execution safe.** They are not optional — breaking one produces a
+merge conflict or a corrupted build that is much more expensive than the time it saves.
+
+- **One owner per shared file.** `libs/contracts/src/index.ts` → Task 1 only.
+  `apps/api/src/app.module.ts` → **Task 11 only** (it registers both new modules at once).
+  `apps/web/src/app/app.routes.ts` → Task 14b only. `.env.example` and `charts/` → Task 12 only.
+  `apps/web/src/app/chat/*` → Task 15 only. No other task edits any of these, ever.
+- **Only Task 3 runs `drizzle-kit generate`.** A second generate collides on the `0002_` prefix.
+- **Only Task 3 starts the `plan-pg` container** (fixed name, port 55432). Task 4's integration spec
+  starts its own via `startTestPostgres()`, and they are in different waves so they never collide —
+  keep it that way.
+- **Parallel API tasks pass `--ignore-scripts` to `npm run test`** (see the conventions above).
+- **The coordinator commits at the end of each wave, not the agents.** Each task still says exactly
+  what to `git add` and what message to use; run those commits serially once the wave is green.
+  Concurrent `git commit` calls in one working tree contend on `.git/index.lock`.
+
+---
+
+## Task 0: Branch
+
+Everything below commits onto a feature branch. Nothing in this plan should ever land directly on
+`main` — Task 16 opens a PR from this branch.
+
+- [ ] **Step 1 — Confirm a clean tree**
+Run: `git status --porcelain`
+Expected: no output. If anything is listed, stop and report — do not stash or discard it.
+- [ ] **Step 2 — Branch off main**
+```bash
+git checkout main
+git pull --ff-only
+git checkout -b feat/google-briefing
+```
+- [ ] **Step 3 — Confirm**
+Run: `git rev-parse --abbrev-ref HEAD`
+Expected: `feat/google-briefing`.
 
 ---
 
@@ -173,7 +263,8 @@ export * from './briefing';
 - [ ] **Step 3 — Build the contracts package, verify it compiles**
 Run: `npm run build -w libs/contracts`
 Expected: exits 0, no output errors.
-- [ ] **Step 4 — Commit**
+- [ ] **Step 4 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add libs/contracts/src/briefing.ts libs/contracts/src/index.ts
 git commit -m "feat(contracts): add briefing and google connection types"
@@ -234,7 +325,7 @@ describe('token-crypto', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/google/token-crypto.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/token-crypto.spec.ts`
 Expected: FAIL — `Cannot find module './token-crypto'`.
 - [ ] **Step 3 — Implement**
 ```typescript
@@ -297,8 +388,9 @@ export function requireEncryptionKey(): string {
 }
 ```
 - [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/google/token-crypto.spec.ts` → all 6 pass.
-- [ ] **Step 5 — Commit**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/token-crypto.spec.ts` → all 6 pass.
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/google/token-crypto.ts apps/api/src/google/token-crypto.spec.ts
 git commit -m "feat(google): AES-256-GCM sealing for stored refresh tokens"
@@ -359,7 +451,8 @@ DATABASE_URL=postgresql://app:app@localhost:55432/appdb \
 docker rm -f plan-pg
 ```
 Expected: prints `migrations applied`.
-- [ ] **Step 5 — Commit**
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/db/schema.ts apps/api/drizzle
 git commit -m "feat(db): google_connections table for the Calendar/Gmail grant"
@@ -441,7 +534,7 @@ describeIfDocker('GoogleConnectionsRepository (integration)', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/google/google-connections.repository.integration.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-connections.repository.integration.spec.ts`
 Expected: FAIL — `Cannot find module './google-connections.repository'`.
 - [ ] **Step 3 — Implement**
 ```typescript
@@ -504,8 +597,9 @@ export class GoogleConnectionsRepository {
 }
 ```
 - [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/google/google-connections.repository.integration.spec.ts` → 4 pass (or the whole file skips if Docker is unavailable — that is acceptable locally but **must** pass in CI).
-- [ ] **Step 5 — Commit**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-connections.repository.integration.spec.ts` → 4 pass (or the whole file skips if Docker is unavailable — that is acceptable locally but **must** pass in CI).
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/google/google-connections.repository.ts \
         apps/api/src/google/google-connections.repository.integration.spec.ts
@@ -519,10 +613,34 @@ git commit -m "feat(google): repository for the per-account Google connection"
 Pure functions. No Nest, no DB — so they are trivially testable with a stubbed `fetch`.
 
 **Files:**
+- Create: `apps/api/src/google/errors.ts`
 - Create: `apps/api/src/google/google-oauth.ts`
 - Test: `apps/api/src/google/google-oauth.spec.ts`
 
-- [ ] **Step 1 — Write the failing test**
+- [ ] **Step 1 — Write the shared error type**
+
+`NotConnectedError` lives in its own file, not on `GoogleTokenService`, because `BriefingService`
+(Task 10) needs to catch it without importing the service — and this task is the one that lands in
+the earliest wave, so putting it here is what lets Task 10 start before Task 6 finishes.
+```typescript
+// apps/api/src/google/errors.ts
+
+/**
+ * The account has no usable Google connection — never granted, or the grant
+ * was revoked. Callers render "connect your account" rather than an error.
+ *
+ * Its own file, with no imports, so both google-token.service.ts (which
+ * throws it) and briefing/briefing.service.ts (which catches it) can depend
+ * on it without depending on each other.
+ */
+export class NotConnectedError extends Error {
+  constructor(message = 'no Google connection for this account') {
+    super(message);
+    this.name = 'NotConnectedError';
+  }
+}
+```
+- [ ] **Step 2 — Write the failing test**
 ```typescript
 // apps/api/src/google/google-oauth.spec.ts
 import {
@@ -637,10 +755,10 @@ describe('google-oauth', () => {
   });
 });
 ```
-- [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/google/google-oauth.spec.ts`
+- [ ] **Step 3 — Run it, verify it fails**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-oauth.spec.ts`
 Expected: FAIL — `Cannot find module './google-oauth'`.
-- [ ] **Step 3 — Implement**
+- [ ] **Step 4 — Implement**
 ```typescript
 // apps/api/src/google/google-oauth.ts
 
@@ -778,11 +896,13 @@ export async function refreshAccessToken(
   return { accessToken: body.access_token, expiresInSeconds: body.expires_in ?? 0 };
 }
 ```
-- [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/google/google-oauth.spec.ts` → 8 pass.
-- [ ] **Step 5 — Commit**
+- [ ] **Step 5 — Run it, verify it passes**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-oauth.spec.ts` → 8 pass.
+- [ ] **Step 6 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
-git add apps/api/src/google/google-oauth.ts apps/api/src/google/google-oauth.spec.ts
+git add apps/api/src/google/errors.ts apps/api/src/google/google-oauth.ts \
+        apps/api/src/google/google-oauth.spec.ts
 git commit -m "feat(google): consent URL, code exchange and token refresh"
 ```
 
@@ -799,7 +919,8 @@ git commit -m "feat(google): consent URL, code exchange and token refresh"
 // apps/api/src/google/google-token.service.spec.ts
 import { randomBytes } from 'node:crypto';
 import { encryptToken } from './token-crypto';
-import { GoogleTokenService, NotConnectedError } from './google-token.service';
+import { GoogleTokenService } from './google-token.service';
+import { NotConnectedError } from './errors';
 import type { GoogleConnection } from './google-connections.repository';
 import * as oauth from './google-oauth';
 
@@ -882,23 +1003,16 @@ describe('GoogleTokenService', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/google/google-token.service.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-token.service.spec.ts`
 Expected: FAIL — `Cannot find module './google-token.service'`.
 - [ ] **Step 3 — Implement**
 ```typescript
 // apps/api/src/google/google-token.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleConnectionsRepository } from './google-connections.repository';
+import { NotConnectedError } from './errors';
 import { GRANT_REVOKED, refreshAccessToken } from './google-oauth';
 import { decryptToken, requireEncryptionKey } from './token-crypto';
-
-/** The account has no usable Google connection. Callers render "connect your account". */
-export class NotConnectedError extends Error {
-  constructor(message = 'no Google connection for this account') {
-    super(message);
-    this.name = 'NotConnectedError';
-  }
-}
 
 /** Refresh this many seconds before actual expiry, so a token can't die mid-request. */
 const EXPIRY_MARGIN_SECONDS = 60;
@@ -967,8 +1081,9 @@ export class GoogleTokenService {
 }
 ```
 - [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/google/google-token.service.spec.ts` → 7 pass.
-- [ ] **Step 5 — Commit**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-token.service.spec.ts` → 7 pass.
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/google/google-token.service.ts apps/api/src/google/google-token.service.spec.ts
 git commit -m "feat(google): access-token minting with an in-process cache"
@@ -978,11 +1093,23 @@ git commit -m "feat(google): access-token minting with an in-process cache"
 
 ## Task 7: Connect/disconnect routes and `GoogleModule`
 
+Two controllers, not one. `/auth/google/connect` must stay outside the `/api` prefix (main.ts
+excludes `/auth/{*splat}`) while `/api/google/status` must stay inside it, and the only shape this
+repo has actually proven works is a controller whose prefix matches its routes — `auth.controller.ts:20`
+is `@Controller('auth')` with `@Get('google')`. A single controller mixing absolute `/auth/...` paths
+with prefix-relative ones is untested territory; don't invent it here.
+
 **Files:**
-- Create: `apps/api/src/google/google-connect.controller.ts`
-- Create: `apps/api/src/google/google.module.ts`
-- Test: `apps/api/src/google/google-connect.controller.spec.ts`
 - Create: `apps/api/src/google/session.d.ts`
+- Create: `apps/api/src/google/session-account.ts`
+- Create: `apps/api/src/google/google-connect.controller.ts`
+- Test: `apps/api/src/google/google-connect.controller.spec.ts`
+- Create: `apps/api/src/google/google-connection.controller.ts`
+- Test: `apps/api/src/google/google-connection.controller.spec.ts`
+- Create: `apps/api/src/google/google.module.ts`
+
+**Do not edit `apps/api/src/app.module.ts` in this task.** Task 11 registers both new modules in one
+edit; two tasks editing that file is a guaranteed conflict.
 
 - [ ] **Step 1 — Declare the session field this module adds**
 
@@ -1007,7 +1134,34 @@ declare module 'express-session' {
 export {};
 ```
 
-- [ ] **Step 2 — Write the failing test**
+- [ ] **Step 2 — Write the shared session-account helper**
+
+Both controllers need the same check, and one of them sits on a path the global `AuthGuard` waves
+through (`auth.guard.ts:34` returns true for anything under `/auth/`), so the check is load-bearing
+rather than belt-and-braces.
+```typescript
+// apps/api/src/google/session-account.ts
+import { UnauthorizedException } from '@nestjs/common';
+import type { Request } from 'express';
+
+/**
+ * The logged-in account id, or 401.
+ *
+ * `req.session.accountId` is written by the auth module as a *string* (see
+ * auth/types.d.ts) — everything downstream keys on a number, so the parse
+ * happens once, here.
+ */
+export function requireAccountId(req: Request): number {
+  const raw = req.session?.accountId;
+  const parsed = Number(raw);
+  if (!raw || Number.isNaN(parsed)) {
+    throw new UnauthorizedException();
+  }
+  return parsed;
+}
+```
+
+- [ ] **Step 3 — Write the failing connect-controller test**
 ```typescript
 // apps/api/src/google/google-connect.controller.spec.ts
 import { UnauthorizedException } from '@nestjs/common';
@@ -1043,6 +1197,12 @@ describe('GoogleConnectController', () => {
     process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
     process.env.APP_ORIGIN = 'https://chat.example.com';
     controller = new GoogleConnectController(connections as never, tokens as never);
+  });
+
+  // clearAllMocks does NOT undo jest.spyOn — without this, the buildConsentUrl
+  // stub below leaks into every later spec in the file.
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('start() rejects a request with no session account', () => {
@@ -1092,6 +1252,32 @@ describe('GoogleConnectController', () => {
     expect(session.googleConnectState).toBeUndefined();
     expect(res.redirectedTo).toBe('https://chat.example.com/?connect=ok');
   });
+});
+```
+- [ ] **Step 4 — Write the failing connection-controller test**
+```typescript
+// apps/api/src/google/google-connection.controller.spec.ts
+import { UnauthorizedException } from '@nestjs/common';
+import type { Request } from 'express';
+import { GoogleConnectionController } from './google-connection.controller';
+
+function fakeRequest(session: Record<string, unknown> | undefined): Request {
+  return { session } as unknown as Request;
+}
+
+describe('GoogleConnectionController', () => {
+  const connections = { find: jest.fn(), upsert: jest.fn(), remove: jest.fn() };
+  const tokens = { forget: jest.fn() };
+  let controller: GoogleConnectionController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    controller = new GoogleConnectionController(connections as never, tokens as never);
+  });
+
+  it('status() rejects a request with no session account', async () => {
+    await expect(controller.status(fakeRequest({}))).rejects.toBeInstanceOf(UnauthorizedException);
+  });
 
   it('status() reports not connected when there is no row', async () => {
     connections.find.mockResolvedValue(null);
@@ -1116,44 +1302,34 @@ describe('GoogleConnectController', () => {
   });
 });
 ```
-- [ ] **Step 3 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/google/google-connect.controller.spec.ts`
+- [ ] **Step 5 — Run both, verify they fail**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/google-connect.controller.spec.ts src/google/google-connection.controller.spec.ts`
 Expected: FAIL — `Cannot find module './google-connect.controller'`.
-- [ ] **Step 4 — Implement the controller**
+- [ ] **Step 6 — Implement the connect controller**
 ```typescript
 // apps/api/src/google/google-connect.controller.ts
 import { randomBytes } from 'node:crypto';
-import {
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Logger,
-  Query,
-  Req,
-  Res,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Controller, Get, Logger, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import type { GoogleConnectionStatus } from '@contracts/briefing';
 import { GoogleConnectionsRepository } from './google-connections.repository';
 import { GoogleTokenService } from './google-token.service';
 import { buildConsentUrl, exchangeCodeForTokens } from './google-oauth';
+import { requireAccountId } from './session-account';
 import { encryptToken, requireEncryptionKey } from './token-crypto';
 
 /**
  * The second, opt-in Google grant.
  *
- * `GET /auth/google/connect` and its callback live under `/auth/*`, which
- * main.ts excludes from the `/api` prefix AND auth.guard.ts lets through
- * without a session (see its PUBLIC path check). That bypass is why both
- * handlers here re-check `req.session.accountId` themselves — an
- * unauthenticated caller must not be able to start a grant.
+ * `@Controller('auth/google')` mirrors auth.controller.ts's `@Controller('auth')`:
+ * main.ts excludes `/auth/{*splat}` from the `/api` prefix, so these resolve to
+ * `/auth/google/connect` and `/auth/google/connect/callback`.
  *
- * `GET /api/google/status` and `DELETE /api/google/connection` are normal
- * `/api` routes and are covered by the global AuthGuard.
+ * That same prefix is what auth.guard.ts:34 waves through without a session —
+ * the bypass is for the pre-login OAuth endpoints, and it applies to these too.
+ * Hence requireAccountId() in both handlers: an unauthenticated caller must not
+ * be able to start a grant.
  */
-@Controller()
+@Controller('auth/google')
 export class GoogleConnectController {
   private readonly logger = new Logger(GoogleConnectController.name);
 
@@ -1162,7 +1338,7 @@ export class GoogleConnectController {
     private readonly tokens: GoogleTokenService,
   ) {}
 
-  @Get('/auth/google/connect')
+  @Get('connect')
   start(@Req() req: Request, @Res() res: Response): void {
     const accountId = requireAccountId(req);
     // CSRF: Google echoes `state` back on the callback. Without comparing it
@@ -1174,7 +1350,7 @@ export class GoogleConnectController {
     res.redirect(buildConsentUrl(state));
   }
 
-  @Get('/auth/google/connect/callback')
+  @Get('connect/callback')
   async callback(
     @Req() req: Request,
     @Res() res: Response,
@@ -1208,8 +1384,32 @@ export class GoogleConnectController {
       res.redirect(`${origin}/?connect=failed`);
     }
   }
+}
+```
+- [ ] **Step 7 — Implement the connection controller**
+```typescript
+// apps/api/src/google/google-connection.controller.ts
+import { Controller, Delete, Get, HttpCode, Req } from '@nestjs/common';
+import type { Request } from 'express';
+import type { GoogleConnectionStatus } from '@contracts/briefing';
+import { GoogleConnectionsRepository } from './google-connections.repository';
+import { GoogleTokenService } from './google-token.service';
+import { requireAccountId } from './session-account';
 
-  @Get('/google/status')
+/**
+ * Normal `/api` routes — main.ts's setGlobalPrefix makes these
+ * `/api/google/status` and `/api/google/connection`, and the global AuthGuard
+ * covers them. requireAccountId() here is only for the numeric parse; the 401
+ * has already happened by the time a handler runs.
+ */
+@Controller('google')
+export class GoogleConnectionController {
+  constructor(
+    private readonly connections: GoogleConnectionsRepository,
+    private readonly tokens: GoogleTokenService,
+  ) {}
+
+  @Get('status')
   async status(@Req() req: Request): Promise<GoogleConnectionStatus> {
     const accountId = requireAccountId(req);
     const connection = await this.connections.find(accountId);
@@ -1218,7 +1418,7 @@ export class GoogleConnectController {
       : { connected: false, scopes: [] };
   }
 
-  @Delete('/google/connection')
+  @Delete('connection')
   @HttpCode(204)
   async disconnect(@Req() req: Request): Promise<void> {
     const accountId = requireAccountId(req);
@@ -1226,22 +1426,14 @@ export class GoogleConnectController {
     this.tokens.forget(accountId);
   }
 }
-
-function requireAccountId(req: Request): number {
-  const raw = req.session?.accountId;
-  const parsed = Number(raw);
-  if (!raw || Number.isNaN(parsed)) {
-    throw new UnauthorizedException();
-  }
-  return parsed;
-}
 ```
-- [ ] **Step 5 — Implement the module**
+- [ ] **Step 8 — Implement the module**
 ```typescript
 // apps/api/src/google/google.module.ts
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { GoogleConnectController } from './google-connect.controller';
+import { GoogleConnectionController } from './google-connection.controller';
 import { GoogleConnectionsRepository } from './google-connections.repository';
 import { GoogleTokenService } from './google-token.service';
 
@@ -1249,20 +1441,19 @@ import { GoogleTokenService } from './google-token.service';
 // BriefingModule needs an access token; the repository stays private.
 @Module({
   imports: [DbModule],
-  controllers: [GoogleConnectController],
+  controllers: [GoogleConnectController, GoogleConnectionController],
   providers: [GoogleConnectionsRepository, GoogleTokenService],
   exports: [GoogleTokenService],
 })
 export class GoogleModule {}
 ```
-- [ ] **Step 6 — Register it**
-
-In `apps/api/src/app.module.ts`, add `import { GoogleModule } from './google/google.module';` at the top, and add `GoogleModule,` to the `imports` array **before** the `ServeStaticModule.forRoot(...)` entry (that one must stay last — its SPA fallback shadows anything after it).
-- [ ] **Step 7 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/google/` → all google specs pass.
-- [ ] **Step 8 — Commit**
+- [ ] **Step 9 — Run it, verify it passes**
+Run: `npm run test -w apps/api --ignore-scripts -- src/google/` → all google specs pass (6 crypto,
+4 repository or skipped, 8 oauth, 7 token service, 4 connect controller, 4 connection controller).
+- [ ] **Step 10 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0.
 ```bash
-git add apps/api/src/google apps/api/src/app.module.ts
+git add apps/api/src/google
 git commit -m "feat(google): opt-in connect/disconnect routes for Calendar and Gmail"
 ```
 
@@ -1375,9 +1566,17 @@ describe('fetchTodaysEvents', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/briefing/calendar-source.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/calendar-source.spec.ts`
 Expected: FAIL — `Cannot find module './calendar-source'`.
-- [ ] **Step 3 — Implement**
+- [ ] **Step 3 — Confirm this Node has the ICU data `zoneOffset` needs**
+Run:
+```bash
+node -e "console.log(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Amsterdam',timeZoneName:'longOffset'}).format(new Date('2026-09-05T12:00:00Z')))"
+```
+Expected: output containing `GMT+02:00`. If it prints `GMT` or throws, this Node was built without
+full ICU — **stop and report**; the implementation below is built on `longOffset` and every event
+time will be an hour wrong rather than visibly broken.
+- [ ] **Step 4 — Implement**
 ```typescript
 // apps/api/src/briefing/calendar-source.ts
 import type { BriefingEvent } from '@contracts/briefing';
@@ -1457,9 +1656,10 @@ export async function fetchTodaysEvents(
     });
 }
 ```
-- [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/briefing/calendar-source.spec.ts` → 7 pass.
-- [ ] **Step 5 — Commit**
+- [ ] **Step 5 — Run it, verify it passes**
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/calendar-source.spec.ts` → 7 pass.
+- [ ] **Step 6 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/briefing/calendar-source.ts apps/api/src/briefing/calendar-source.spec.ts
 git commit -m "feat(briefing): read today's events from Google Calendar"
@@ -1574,6 +1774,17 @@ describe('fetchRecentMail', () => {
     expect(mail.map((m) => m.id)).toEqual(['m1']);
   });
 
+  it('skips a message whose body is a 200 but not JSON', async () => {
+    global.fetch = jest.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/messages/m1')
+          ? new Response('<html>not json</html>', { status: 200 })
+          : new Response(JSON.stringify({ messages: [{ id: 'm1' }] }), { status: 200 }),
+      ),
+    ) as unknown as typeof fetch;
+    await expect(fetchRecentMail('at')).resolves.toEqual([]);
+  });
+
   it('throws when the list call itself fails', async () => {
     global.fetch = jest.fn().mockResolvedValue(new Response('{}', { status: 401 })) as unknown as typeof fetch;
     await expect(fetchRecentMail('at')).rejects.toThrow(/Gmail request failed \(401\)/);
@@ -1581,7 +1792,7 @@ describe('fetchRecentMail', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/briefing/gmail-source.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/gmail-source.spec.ts`
 Expected: FAIL — `Cannot find module './gmail-source'`.
 - [ ] **Step 3 — Implement**
 ```typescript
@@ -1637,21 +1848,29 @@ export async function fetchRecentMail(accessToken: string): Promise<BriefingMail
       const getParams = new URLSearchParams({ format: 'metadata' });
       getParams.append('metadataHeaders', 'From');
       getParams.append('metadataHeaders', 'Subject');
-      const response = await fetch(`${GMAIL_BASE}/${id}?${getParams.toString()}`, { headers });
-      if (!response.ok) {
-        // One unreadable message shouldn't cost the whole section.
-        logger.warn(`skipping message ${id}: Gmail returned ${response.status}`);
+      // The whole body is in the try, not just the status check: a 200 with a
+      // truncated or non-JSON body makes response.json() reject, and an
+      // unguarded reject here fails Promise.all and costs the entire section —
+      // exactly what "skip the bad message" is supposed to prevent.
+      try {
+        const response = await fetch(`${GMAIL_BASE}/${id}?${getParams.toString()}`, { headers });
+        if (!response.ok) {
+          logger.warn(`skipping message ${id}: Gmail returned ${response.status}`);
+          return null;
+        }
+        const message = (await response.json()) as GmailMessage;
+        const receivedMs = Number(message.internalDate ?? '0');
+        return {
+          id: message.id ?? id,
+          from: header(message, 'From') ?? '(unknown sender)',
+          subject: header(message, 'Subject') ?? '(no subject)',
+          snippet: (message.snippet ?? '').slice(0, MAX_SNIPPET_CHARS),
+          receivedAt: new Date(Number.isFinite(receivedMs) ? receivedMs : 0).toISOString(),
+        };
+      } catch (err) {
+        logger.warn(`skipping message ${id}: ${(err as Error).name}`);
         return null;
       }
-      const message = (await response.json()) as GmailMessage;
-      const receivedMs = Number(message.internalDate ?? '0');
-      return {
-        id: message.id ?? id,
-        from: header(message, 'From') ?? '(unknown sender)',
-        subject: header(message, 'Subject') ?? '(no subject)',
-        snippet: (message.snippet ?? '').slice(0, MAX_SNIPPET_CHARS),
-        receivedAt: new Date(Number.isFinite(receivedMs) ? receivedMs : 0).toISOString(),
-      };
     }),
   );
 
@@ -1659,8 +1878,9 @@ export async function fetchRecentMail(accessToken: string): Promise<BriefingMail
 }
 ```
 - [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/briefing/gmail-source.spec.ts` → 7 pass.
-- [ ] **Step 5 — Commit**
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/gmail-source.spec.ts` → 8 pass.
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/briefing/gmail-source.ts apps/api/src/briefing/gmail-source.spec.ts
 git commit -m "feat(briefing): read recent unread mail as metadata only"
@@ -1678,7 +1898,7 @@ git commit -m "feat(briefing): read recent unread mail as metadata only"
 ```typescript
 // apps/api/src/briefing/briefing.service.spec.ts
 import { BriefingService } from './briefing.service';
-import { NotConnectedError } from '../google/google-token.service';
+import { NotConnectedError } from '../google/errors';
 import type { OpencodeStreamChunk } from '../opencode/opencode-client.types';
 
 function stream(chunks: OpencodeStreamChunk[]): AsyncGenerator<OpencodeStreamChunk> {
@@ -1775,7 +1995,7 @@ describe('BriefingService', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/briefing/briefing.service.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/briefing.service.spec.ts`
 Expected: FAIL — `Cannot find module './briefing.service'`.
 - [ ] **Step 3 — Implement**
 ```typescript
@@ -1783,7 +2003,8 @@ Expected: FAIL — `Cannot find module './briefing.service'`.
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Briefing, BriefingEvent, BriefingMail, BriefingSection } from '@contracts/briefing';
 import { OpencodeService } from '../opencode/opencode.service';
-import { GoogleTokenService, NotConnectedError } from '../google/google-token.service';
+import { GoogleTokenService } from '../google/google-token.service';
+import { NotConnectedError } from '../google/errors';
 import { fetchTodaysEvents } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
 
@@ -1923,8 +2144,9 @@ export class BriefingService {
 }
 ```
 - [ ] **Step 4 — Run it, verify it passes**
-Run: `npm run test -w apps/api -- src/briefing/briefing.service.spec.ts` → 7 pass.
-- [ ] **Step 5 — Commit**
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/briefing.service.spec.ts` → 7 pass.
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/api/src/briefing/briefing.service.ts apps/api/src/briefing/briefing.service.spec.ts
 git commit -m "feat(briefing): fan out to calendar and mail, summarize with tools off"
@@ -1932,7 +2154,11 @@ git commit -m "feat(briefing): fan out to calendar and mail, summarize with tool
 
 ---
 
-## Task 11: Briefing controller and module
+## Task 11: Briefing controller, module, and app wiring
+
+This is the **only** task that edits `apps/api/src/app.module.ts`, and it registers both new modules
+in one go — `GoogleModule` (Task 7) and `BriefingModule` (this task). Task 7 deliberately leaves the
+file alone so the two can be built in parallel without conflicting on it.
 
 **Files:**
 - Create: `apps/api/src/briefing/briefing.controller.ts`
@@ -1986,7 +2212,7 @@ describe('BriefingController', () => {
 });
 ```
 - [ ] **Step 2 — Run it, verify it fails**
-Run: `npm run test -w apps/api -- src/briefing/briefing.controller.spec.ts`
+Run: `npm run test -w apps/api --ignore-scripts -- src/briefing/briefing.controller.spec.ts`
 Expected: FAIL — `Cannot find module './briefing.controller'`.
 - [ ] **Step 3 — Implement the controller**
 ```typescript
@@ -2045,16 +2271,59 @@ import { fetchRecentMail } from './gmail-source';
 })
 export class BriefingModule {}
 ```
-- [ ] **Step 5 — Register it**
+- [ ] **Step 5 — Register both modules**
 
-In `apps/api/src/app.module.ts`, add `import { BriefingModule } from './briefing/briefing.module';` and add `BriefingModule,` to `imports`, again **before** `ServeStaticModule.forRoot(...)`.
-- [ ] **Step 6 — Confirm OpencodeModule still exports OpencodeService**
+Two imports and two entries in `apps/api/src/app.module.ts`. `ServeStaticModule.forRoot(...)` must
+stay **last** — its SPA fallback route shadows anything registered after it. The `imports` array
+should end up exactly like this:
+```typescript
+import { GoogleModule } from './google/google.module';
+import { BriefingModule } from './briefing/briefing.module';
+// ...
+
+  imports: [
+    AuthModule,
+    DbModule,
+    ConversationsModule,
+    ChatModule,
+    OpencodeModule,
+    GoogleModule,
+    BriefingModule,
+    // Serves the Angular build (copied into apps/api/public by workstream
+    // F's Dockerfile). Registered LAST so its SPA fallback route doesn't
+    // shadow /api and /auth routes registered above.
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      exclude: ['/api/{*splat}', '/auth/{*splat}'],
+    }),
+  ],
+```
+- [ ] **Step 6 — Confirm the routes resolve where the plan says they do**
+
+This is the first moment the whole app boots with both modules in it, and the `/auth` vs `/api`
+prefix split is the one thing in this plan that no unit test covers.
+```bash
+npm run build -w apps/api
+```
+Expected: build succeeds. Then start the API against the dev database and check the four new paths:
+```bash
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' localhost:3000/auth/google/connect
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/api/google/status
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/api/briefing
+```
+Expected: the first is `401` (the `/auth/` guard bypass is real, so the controller's own
+`requireAccountId` is what rejects it), the second and third are `401` from the global guard. A `404`
+on any of them means the prefix did not resolve as designed — **stop and report** rather than moving
+the routes around.
+- [ ] **Step 7 — Confirm OpencodeModule still exports OpencodeService**
 Run: `grep -n "exports" apps/api/src/opencode/opencode.module.ts`
 Expected: `exports: [OpencodeService],` — it is already exported today (ChatModule relies on the same thing), so this is a regression check, not a change. If it is missing, add it; `BriefingModule` cannot inject the service otherwise.
-- [ ] **Step 7 — Run the whole API suite**
+- [ ] **Step 8 — Run the whole API suite**
 Run: `npm run test -w apps/api`
-Expected: all specs pass, no new failures.
-- [ ] **Step 8 — Commit**
+Expected: all specs pass, no new failures. (No `--ignore-scripts` here — Task 11 is alone in its
+wave, and the contracts rebuild is welcome.)
+- [ ] **Step 9 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0.
 ```bash
 git add apps/api/src/briefing apps/api/src/app.module.ts apps/api/src/opencode/opencode.module.ts
 git commit -m "feat(briefing): GET /api/briefing"
@@ -2092,7 +2361,9 @@ Under the existing `app:` block, add:
   # model picker's value.
   briefingModel: glm-5.3-flash
 ```
-Then update the `authSecretName` comment above it to list `GOOGLE_TOKEN_ENCRYPTION_KEY` among the required Secret keys.
+Then update the comment **below** the `app:` block — the one at `charts/chatty/values.yaml:48-52`
+that sits directly above `authSecretName: chatty-auth` — to list `GOOGLE_TOKEN_ENCRYPTION_KEY`
+among the keys the operator must put in that Secret.
 - [ ] **Step 3 — Add to `charts/chatty/templates/deployment.yaml`**
 
 In the container's `env:` list, after the `TOOL_CAPABLE_MODELS` entry:
@@ -2112,7 +2383,8 @@ Expected: prints the env entry with value `"Europe/Amsterdam"`.
 - [ ] **Step 6 — Document the prerequisites**
 
 Append a `## Google briefing setup` section to `docs/deployment.md` containing the P1–P5 checklist verbatim from the top of this plan.
-- [ ] **Step 7 — Commit**
+- [ ] **Step 7 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add .env.example charts/chatty docs/deployment.md
 git commit -m "chore(briefing): env, chart and deployment docs for the Google grant"
@@ -2194,7 +2466,8 @@ export class RealBriefingApi implements BriefingApi {
 - [ ] **Step 3 — Verify it compiles**
 Run: `npm run build -w apps/web`
 Expected: build succeeds. (Nothing imports these yet — this only proves the types resolve.)
-- [ ] **Step 4 — Commit**
+- [ ] **Step 4 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0. Fix any error it reports in files you created; if it reports errors in files you did not touch, stop and report.
 ```bash
 git add apps/web/src/app/briefing
 git commit -m "feat(web): briefing API port and fetch implementation"
@@ -2202,20 +2475,17 @@ git commit -m "feat(web): briefing API port and fetch implementation"
 
 ---
 
-## Task 14: The Today screen and the Today | Chat switch
+## Task 14a: The Today | Chat switch
 
-Today becomes the app's landing route. The switch built in Step 1 is shared:
-this task puts it in Today's top bar, Task 15 puts the same component in
-chat's.
+A presentational component with no dependencies, split out from the Today screen so it can be built
+in wave 1 — Task 14b (the Today screen) and Task 15 (chat's top bar) both consume it, and neither can
+start until it exists.
 
 **Files:**
 - Create: `apps/web/src/app/shared/today-chat-switch.ts`
 - Test: `apps/web/src/app/shared/today-chat-switch.spec.ts`
-- Create: `apps/web/src/app/briefing/briefing-shell.ts`
-- Test: `apps/web/src/app/briefing/briefing-shell.spec.ts`
-- Modify: `apps/web/src/app/app.routes.ts`
 
-- [ ] **Step 1 — Build the Today | Chat switch, test first**
+- [ ] **Step 1 — Write the failing test**
 
 ```typescript
 // apps/web/src/app/shared/today-chat-switch.spec.ts
@@ -2226,7 +2496,12 @@ import { provideRouter } from '@angular/router';
 import { TodayChatSwitch } from './today-chat-switch';
 
 describe('TodayChatSwitch', () => {
+  // resetTestingModule() is load-bearing: two of the specs below call setup()
+  // twice, and Angular throws "Cannot configure the test module when the test
+  // module has already been instantiated" if you configure after createComponent
+  // without resetting first.
   function setup(active: 'today' | 'chat', pendingCount = 0): HTMLElement {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [TodayChatSwitch],
       providers: [provideZonelessChangeDetection(), provideRouter([])],
@@ -2257,8 +2532,12 @@ describe('TodayChatSwitch', () => {
 });
 ```
 
-Run it (`npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless`) and
-watch it fail on the missing module, then implement:
+- [ ] **Step 2 — Run it, verify it fails**
+
+Run `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` and watch it fail on the
+missing `./today-chat-switch` module.
+
+- [ ] **Step 3 — Implement**
 
 ```typescript
 // apps/web/src/app/shared/today-chat-switch.ts
@@ -2350,7 +2629,27 @@ export class TodayChatSwitch {
 `pendingCount` stays at its default of 0 for the whole of this plan — nothing
 creates a proposal yet. `2026-09-05-google-write-proposals.md` is what feeds it.
 
-- [ ] **Step 2 — Write the failing Today test**
+- [ ] **Step 4 — Run it, verify it passes**
+Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` → all pass, 3 new.
+- [ ] **Step 5 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0.
+```bash
+git add apps/web/src/app/shared/today-chat-switch.ts apps/web/src/app/shared/today-chat-switch.spec.ts
+git commit -m "feat(web): today | chat segmented switch"
+```
+
+---
+
+## Task 14b: The Today screen
+
+Today becomes the app's landing route, with the Task 14a switch in its top bar.
+
+**Files:**
+- Create: `apps/web/src/app/briefing/briefing-shell.ts`
+- Test: `apps/web/src/app/briefing/briefing-shell.spec.ts`
+- Modify: `apps/web/src/app/app.routes.ts`
+
+- [ ] **Step 1 — Write the failing Today test**
 ```typescript
 // apps/web/src/app/briefing/briefing-shell.spec.ts
 import { TestBed } from '@angular/core/testing';
@@ -2391,99 +2690,69 @@ class StubApi implements BriefingApi {
   }
 }
 
+/**
+ * `overrideComponent`, not `providers`, is what actually swaps the API here.
+ *
+ * BriefingShell declares `providers: [{ provide: BRIEFING_API, useClass: RealBriefingApi }]` on
+ * itself, and a component-level provider wins over anything the TestBed provides — a plain
+ * `providers: [{ provide: BRIEFING_API, useValue: api }]` would be silently ignored and the specs
+ * would hit the real backend over `fetch`. chat-shell.spec.ts:68 overrides CHAT_API the same way,
+ * for the same reason.
+ */
+function setup(api: StubApi): HTMLElement {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [BriefingShell],
+    providers: [provideZonelessChangeDetection(), provideRouter([])],
+  }).overrideComponent(BriefingShell, {
+    set: { providers: [{ provide: BRIEFING_API, useValue: api }] },
+  });
+  const fixture = TestBed.createComponent(BriefingShell);
+  fixture.detectChanges();
+  return fixture.nativeElement as HTMLElement;
+}
+
 describe('BriefingShell', () => {
-  let api: StubApi;
-
-  function setup(): ReturnType<typeof TestBed.createComponent<BriefingShell>> {
-    api = new StubApi();
-    TestBed.configureTestingModule({
-      imports: [BriefingShell],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        { provide: BRIEFING_API, useValue: api },
-      ],
-    });
-    const fixture = TestBed.createComponent(BriefingShell);
-    fixture.detectChanges();
-    return fixture;
-  }
-
   it('renders the summary and both sections', () => {
-    const el: HTMLElement = setup().nativeElement;
+    const el = setup(new StubApi());
     expect(el.textContent).toContain('A quiet day.');
     expect(el.textContent).toContain('Standup');
     expect(el.textContent).toContain('Lunch?');
   });
 
   it('shows a connect link when Google is not connected', () => {
-    api = new StubApi();
-    TestBed.configureTestingModule({
-      imports: [BriefingShell],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        {
-          provide: BRIEFING_API,
-          useValue: Object.assign(new StubApi(), {
-            briefing: {
-              ...CONNECTED,
-              summary: '',
-              calendar: { status: 'not_connected' as const },
-              mail: { status: 'not_connected' as const },
-            },
-          }),
-        },
-      ],
-    });
-    const fixture = TestBed.createComponent(BriefingShell);
-    fixture.detectChanges();
-    const link = fixture.nativeElement.querySelector('a.connect') as HTMLAnchorElement;
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      summary: '',
+      calendar: { status: 'not_connected' },
+      mail: { status: 'not_connected' },
+    };
+    const link = setup(api).querySelector('a.connect') as HTMLAnchorElement;
     // A plain <a>, not a routerLink: /auth/google/connect is a server route
     // and needs a full page navigation, like the login button.
     expect(link.getAttribute('href')).toBe('/auth/google/connect');
   });
 
   it('renders a per-section error without blanking the page', () => {
-    TestBed.configureTestingModule({
-      imports: [BriefingShell],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        {
-          provide: BRIEFING_API,
-          useValue: Object.assign(new StubApi(), {
-            briefing: { ...CONNECTED, mail: { status: 'error' as const, message: 'Could not read your mail.' } },
-          }),
-        },
-      ],
-    });
-    const fixture = TestBed.createComponent(BriefingShell);
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
+    const api = new StubApi();
+    api.briefing = { ...CONNECTED, mail: { status: 'error', message: 'Could not read your mail.' } };
+    const el = setup(api);
     expect(el.textContent).toContain('Could not read your mail.');
     expect(el.textContent).toContain('Standup');
   });
 
   it('shows an error message when the whole request fails', () => {
-    TestBed.configureTestingModule({
-      imports: [BriefingShell],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        { provide: BRIEFING_API, useValue: Object.assign(new StubApi(), { failBriefing: true }) },
-      ],
-    });
-    const fixture = TestBed.createComponent(BriefingShell);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain("Couldn't load your briefing");
+    const api = new StubApi();
+    api.failBriefing = true;
+    expect(setup(api).textContent).toContain("Couldn't load your briefing");
   });
 });
 ```
-- [ ] **Step 3 — Run it, verify it fails**
+- [ ] **Step 2 — Run it, verify it fails**
 Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless`
 Expected: FAIL — cannot resolve `./briefing-shell`.
-- [ ] **Step 4 — Implement the Today screen**
+- [ ] **Step 3 — Implement the Today screen**
 ```typescript
 // apps/web/src/app/briefing/briefing-shell.ts
 import { Component, inject, signal } from '@angular/core';
@@ -2695,10 +2964,10 @@ export class BriefingShell {
   }
 }
 ```
-- [ ] **Step 5 — Confirm the markdown helper's signature is unchanged**
+- [ ] **Step 4 — Confirm the markdown helper's signature is unchanged**
 Run: `grep -n "export function renderMarkdownToHtml" apps/web/src/app/core/markdown.ts`
 Expected: `export function renderMarkdownToHtml(markdown: string): string`. It is a plain exported function (already DOMPurify-sanitized), not an injectable service — `message-bubble.ts:4` uses it the same way. If the signature has changed, adjust `renderedSummary()` to match; do not change `markdown.ts`.
-- [ ] **Step 6 — Move the routes**
+- [ ] **Step 5 — Move the routes**
 
 Replace the entire contents of `apps/web/src/app/app.routes.ts` with this. Today
 takes `''` and chat moves to `/chat`. The `'**'` wildcard must stay last — a
@@ -2725,12 +2994,13 @@ Two consequences to check rather than assume:
   `grep -rn "routerLink=\"/\"\|navigate(\['/'\])" apps/web/src` that no
   existing link means "the chat screen" by pointing at `/`; if one does, point it
   at `/chat`.
-- [ ] **Step 7 — Run it, verify it passes**
-Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` → all pass, 7 new (3 for the switch, 4 for Today).
-- [ ] **Step 8 — Commit**
+- [ ] **Step 6 — Run it, verify it passes**
+Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` → all pass, 4 new for Today.
+- [ ] **Step 7 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0.
 ```bash
-git add apps/web/src/app/briefing apps/web/src/app/shared/today-chat-switch.ts \
-        apps/web/src/app/shared/today-chat-switch.spec.ts apps/web/src/app/app.routes.ts
+git add apps/web/src/app/briefing/briefing-shell.ts \
+        apps/web/src/app/briefing/briefing-shell.spec.ts apps/web/src/app/app.routes.ts
 git commit -m "feat(web): today screen at the root route"
 ```
 
@@ -2738,7 +3008,7 @@ git commit -m "feat(web): today screen at the root route"
 
 ## Task 15: Put the switch in the chat top bar
 
-Chat's top bar loses the wordmark and gains the same `TodayChatSwitch` Task 14
+Chat's top bar loses the wordmark and gains the same `TodayChatSwitch` Task 14a
 built. The wordmark is the right thing to drop: it already disappears under
 400px (`chat-shell.scss`), so on the screen where space is tightest nothing is
 lost at all.
@@ -2797,20 +3067,23 @@ hide, and a rule that matches nothing is worse than no rule:
 
 - [ ] **Step 4 — Assert the switch is there**
 
-In `apps/web/src/app/chat/chat-shell.spec.ts`, add one spec to the existing
-describe block (the shell's spec already builds the component; reuse whatever
-setup helper it has rather than adding a second one):
+In `apps/web/src/app/chat/chat-shell.spec.ts`, add one spec **inside the existing
+`describe('ChatShell', ...)` block** — it needs that block's `beforeEach`, which is what overrides
+`CHAT_API` with the test stub. There is no shared `fixture` variable in that file: every spec builds
+its own (see `chat-shell.spec.ts:76` and `:90`), so this one does too.
 ```typescript
   it('offers the way back to Today from the top bar', () => {
-    const link = fixture.nativeElement.querySelector(
+    const fixture = TestBed.createComponent(ChatShell);
+    fixture.detectChanges();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
       'app-today-chat-switch a[href="/"]',
-    ) as HTMLAnchorElement | null;
+    );
     expect(link).not.toBeNull();
   });
 ```
-If the existing spec does not already call `provideRouter([])`, add it to that
-TestBed's providers — `routerLink` needs it and the failure mode is an
-unhelpful "No provider for Router".
+`provideRouter([])` is already in that TestBed's providers (`chat-shell.spec.ts:67`), so nothing to
+add there — `routerLink` will resolve.
 
 - [ ] **Step 5 — Verify the top bar still fits on an iPhone 13 mini**
 ```bash
@@ -2829,9 +3102,10 @@ truncates), not the switch. Kill the server afterwards with
 `pkill -f "http.server 8791"`.
 
 - [ ] **Step 6 — Run the web suite**
-Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` → all pass.
+Run: `npm run test -w apps/web -- --watch=false --browsers=ChromeHeadless` → all pass, 1 new.
 
-- [ ] **Step 7 — Commit**
+- [ ] **Step 7 — Lint, then commit**
+Run: `npm run lint` — expected: exits 0.
 ```bash
 git add apps/web/src/app/chat
 git commit -m "feat(web): switch between today and chat from the top bar"
@@ -2856,7 +3130,13 @@ Expected: exits 0 with the new repository integration spec passing.
 - [ ] **Step 4 — Build the production bundle**
 Run: `npm run build -w apps/web && npm run build -w apps/api`
 Expected: both succeed.
-- [ ] **Step 5 — Manual smoke test against the dev stack**
+- [ ] **Step 5 — Stop and confirm the human prerequisites**
+
+This is the gate. Ask the operator to confirm **P1–P5** at the top of this plan are done, and wait
+for an answer before continuing. Nothing before this point needed them; nothing after this point
+works without them. Do not attempt any of P1–P5 yourself — they are console and cluster actions.
+
+- [ ] **Step 6 — Manual smoke test against the dev stack**
 
 Start Postgres and the API, then in a browser at `http://localhost:4200`:
 1. Log in.
@@ -2873,14 +3153,16 @@ Start Postgres and the API, then in a browser at `http://localhost:4200`:
    ```
    Expected: three dot-separated base64 segments. **If it looks like a `1//...` Google token, stop — encryption is not wired up.**
 6. `curl -s localhost:3000/api/briefing` with no cookie → expect `401`.
-- [ ] **Step 6 — Open the PR**
+- [ ] **Step 7 — Open the PR**
+
+The branch already exists (Task 0); this only pushes it.
 ```bash
 git push -u origin feat/google-briefing
 gh pr create --base main \
   --title "feat: today screen from Google Calendar and Gmail" \
   --body "Read-only Google Calendar + Gmail briefing, now the app's landing screen, behind a separate opt-in OAuth grant. Chat moves to /chat and the two are joined by a Today | Chat switch. Refresh tokens are AES-256-GCM sealed at rest; the summarization call carries no tools because the context holds private mail."
 ```
-- [ ] **Step 7 — Confirm CI is green**
+- [ ] **Step 8 — Confirm CI is green**
 Run: `gh pr checks --watch`
 Expected: `lint-test-build` passes.
 
