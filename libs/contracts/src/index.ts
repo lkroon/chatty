@@ -3,4 +3,5 @@ export * from './conversation';
 export * from './chat';
 export * from './usage-service';
 export * from './auth';
+export * from './proposal';
 export * from './briefing';
