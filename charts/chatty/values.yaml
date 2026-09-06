@@ -49,7 +49,7 @@ app:
   #
   # Turning this on changes the consent screen: three write scopes are added,
   # so every already-connected account must disconnect and reconnect once.
-  googleWriteToolsEnabled: false
+  googleWriteToolsEnabled: true
   # Days a pending proposal may still be confirmed.
   proposalTtlDays: 3
   # IANA zone for the daily briefing's "today" and all displayed times.
