@@ -102,6 +102,30 @@ export const messageToolCalls = pgTable(
   ],
 );
 
+/**
+ * The extra Google grant (Calendar + Gmail), one row per account. Separate
+ * from `accounts` because logging in and connecting your calendar are
+ * different consents: an account exists without this row, and revoking is a
+ * DELETE here that leaves login working.
+ *
+ * `refreshTokenSealed` is AES-256-GCM output from src/google/token-crypto.ts,
+ * never the raw token. Access tokens are deliberately NOT stored — they last
+ * an hour and are minted on demand (src/google/google-token.service.ts).
+ */
+export const googleConnections = pgTable('google_connections', {
+  accountId: integer('account_id')
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: 'cascade' }),
+  refreshTokenSealed: text('refresh_token_sealed').notNull(),
+  scopes: text('scopes').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
 export const usageCounters = pgTable(
   'usage_counters',
   {

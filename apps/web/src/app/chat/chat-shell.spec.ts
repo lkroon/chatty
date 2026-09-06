@@ -125,4 +125,14 @@ describe('ChatShell', () => {
     fixture.detectChanges();
     expect(el.textContent).toContain('You said: "hello world" streamed');
   });
+
+  it('offers the way back to Today from the top bar', () => {
+    const fixture = TestBed.createComponent(ChatShell);
+    fixture.detectChanges();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      'app-today-chat-switch a[href="/"]',
+    );
+    expect(link).not.toBeNull();
+  });
 });

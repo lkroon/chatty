@@ -1235,7 +1235,10 @@ describe('GoogleConnectController', () => {
 
   it('callback() stores a sealed refresh token and clears the state', async () => {
     jest.spyOn(oauth, 'exchangeCodeForTokens').mockResolvedValue({
-      refreshToken: 'rt',
+      // Long and distinctive on purpose. A short token like 'rt' collides with
+      // the random base64 of the sealed value roughly once every 116 runs,
+      // which reads as a flaky test rather than the leak this asserts against.
+      refreshToken: '1//refresh-token-value',
       accessToken: 'at',
       expiresInSeconds: 3600,
       scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
@@ -1247,7 +1250,7 @@ describe('GoogleConnectController', () => {
     expect(connections.upsert).toHaveBeenCalledTimes(1);
     const [accountId, sealed, scopes] = connections.upsert.mock.calls[0];
     expect(accountId).toBe(1);
-    expect(sealed).not.toContain('rt');
+    expect(sealed).not.toContain('refresh-token-value');
     expect(scopes).toEqual(['https://www.googleapis.com/auth/calendar.readonly']);
     expect(session.googleConnectState).toBeUndefined();
     expect(res.redirectedTo).toBe('https://chat.example.com/?connect=ok');
@@ -1492,6 +1495,7 @@ describe('fetchTodaysEvents', () => {
     // Recurring events must be expanded, or a weekly standup shows up as one
     // undated series instead of today's instance.
     expect(parsed.searchParams.get('singleEvents')).toBe('true');
+    expect(parsed.searchParams.get('timeZone')).toBe('Europe/Amsterdam');
     expect(parsed.searchParams.get('orderBy')).toBe('startTime');
     expect(parsed.searchParams.get('timeMin')).toBe('2026-09-05T00:00:00+02:00');
     expect(parsed.searchParams.get('timeMax')).toBe('2026-09-06T00:00:00+02:00');
@@ -1627,6 +1631,8 @@ export async function fetchTodaysEvents(
   const params = new URLSearchParams({
     timeMin: `${isoDate}T00:00:00${offset}`,
     timeMax: `${nextDay(isoDate)}T00:00:00${offset}`,
+    // Without this Google answers in the *calendar's* default zone, not ours.
+    timeZone,
     // Expand recurring series into their actual instances.
     singleEvents: 'true',
     orderBy: 'startTime',
