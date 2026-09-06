@@ -1,3 +1,5 @@
+import type { ProposalKind } from '@contracts/proposal';
+
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
@@ -17,6 +19,46 @@ export const BRIEFING_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/gmail.readonly',
 ];
+
+/**
+ * The write scopes, requested only when GOOGLE_WRITE_TOOLS_ENABLED=true.
+ *
+ * All three are *sensitive*, not restricted — note that `gmail.send` is a
+ * lower tier than `gmail.compose`, because composing implies mailbox access.
+ * plan 1's `gmail.readonly` already put this project in the restricted
+ * bucket, so these add no new verification burden.
+ *
+ * Granting them changes what a confirmed proposal can do; it does NOT change
+ * what the model can do on its own — see proposals.service.ts.
+ */
+export const WRITE_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/tasks',
+  'https://www.googleapis.com/auth/gmail.send',
+];
+
+/** The write tools are off unless this is exactly "true". */
+export function writeToolsEnabled(): boolean {
+  return process.env.GOOGLE_WRITE_TOOLS_ENABLED === 'true';
+}
+
+/** Scopes to request on the consent screen, given the current configuration. */
+export function grantedScopes(): string[] {
+  return writeToolsEnabled() ? [...BRIEFING_SCOPES, ...WRITE_SCOPES] : [...BRIEFING_SCOPES];
+}
+
+/**
+ * The scope a confirmed proposal of each kind needs.
+ *
+ * Checked against the scopes Google actually granted (stored per connection)
+ * before anything is claimed, so an account connected before write tools
+ * existed gets "reconnect Google" rather than an opaque 403.
+ */
+export const REQUIRED_SCOPE_BY_KIND: Readonly<Record<ProposalKind, string>> = {
+  calendar_event: 'https://www.googleapis.com/auth/calendar.events',
+  task: 'https://www.googleapis.com/auth/tasks',
+  email: 'https://www.googleapis.com/auth/gmail.send',
+};
 
 /** Thrown message prefix the token service keys on to clear a dead connection. */
 export const GRANT_REVOKED = 'GOOGLE_GRANT_REVOKED';
@@ -47,7 +89,7 @@ export function buildConsentUrl(state: string): string {
     client_id: clientId,
     redirect_uri: redirectUri(),
     response_type: 'code',
-    scope: BRIEFING_SCOPES.join(' '),
+    scope: grantedScopes().join(' '),
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
