@@ -1,3 +1,5 @@
+import type { ProposalCard } from './proposal';
+
 /** Whether this account has granted the extra Calendar/Gmail scopes. */
 export interface GoogleConnectionStatus {
   connected: boolean;
@@ -46,6 +48,14 @@ export interface Briefing {
   summary: string;
   calendar: BriefingSection<BriefingEvent>;
   mail: BriefingSection<BriefingMail>;
+  /**
+   * Writes the model proposed that are still waiting on the user, oldest
+   * first. Empty when the write tools are off, when nothing is pending, or
+   * when Google is not connected. Read-only here: Today lists these and
+   * points at them, but confirming still happens on the card in the
+   * transcript, through POST /api/proposals/:id/confirm.
+   */
+  pending: ProposalCard[];
   /** ISO timestamp this briefing was generated. */
   generatedAt: string;
 }

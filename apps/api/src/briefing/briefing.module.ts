@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { GoogleModule } from '../google/google.module';
 import { OpencodeModule } from '../opencode/opencode.module';
+import { ProposalsModule } from '../proposals/proposals.module';
 import { BriefingController } from './briefing.controller';
 import {
   BriefingService,
@@ -14,7 +15,7 @@ import { fetchRecentMail } from './gmail-source';
 // BriefingService so its unit tests can substitute them without stubbing
 // global fetch.
 @Module({
-  imports: [GoogleModule, OpencodeModule],
+  imports: [GoogleModule, OpencodeModule, ProposalsModule],
   controllers: [BriefingController],
   providers: [
     BriefingService,

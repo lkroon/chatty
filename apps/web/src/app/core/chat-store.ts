@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, Subscription } from 'rxjs';
 import type {
   ChatEvent,
@@ -68,6 +68,20 @@ export class ChatStore {
 
   /** Proposal ids with a confirm/discard in flight, so a card can't be double-tapped. */
   private readonly proposalBusy = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Proposals in this conversation still waiting on a decision. Derived from
+   * the messages already loaded — no fetch, because chat only ever shows one
+   * conversation and this count is about the cards on this screen. Today is
+   * what counts them across all conversations.
+   */
+  readonly pendingProposalCount = computed(() => {
+    const chips = [
+      ...this.messages().flatMap((msg) => msg.toolCalls ?? []),
+      ...this.streamingToolCalls(),
+    ];
+    return chips.filter((chip) => chip.proposal?.confirmable).length;
+  });
 
   private pendingMessageId: string | null = null;
   private streamSub?: Subscription;
