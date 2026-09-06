@@ -15,6 +15,13 @@
       "when": 1788348326644,
       "tag": "0001_spicy_nick_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788685378756,
+      "tag": "0002_orange_captain_stacy",
+      "breakpoints": true
     }
   ]
 }
