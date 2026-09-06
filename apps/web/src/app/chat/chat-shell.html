@@ -13,7 +13,7 @@
     <span class="brand">
       <app-chatty-logo [size]="26" />
     </span>
-    <app-today-chat-switch active="chat" />
+    <app-today-chat-switch active="chat" [pendingCount]="store.pendingProposalCount()" />
     <div class="spacer"></div>
     <app-model-picker />
   </header>
@@ -37,6 +37,7 @@
     </aside>
     <main class="main">
       <app-message-thread />
+      <app-pending-rail [count]="store.pendingProposalCount()" />
       <app-composer />
     </main>
   </div>

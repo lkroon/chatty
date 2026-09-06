@@ -8,7 +8,14 @@ import {
 } from '../opencode/opencode-client.types';
 import type { OpencodeService } from '../opencode/opencode.service';
 import { MAX_TOOL_ROUNDS } from '../tools/tool-budget';
-import type { ToolExecutionResult, ToolRuntime } from '../tools/tool-runtime';
+import type {
+  ToolActor,
+  ToolDefinition,
+  ToolExecutionResult,
+  ToolRuntime,
+} from '../tools/tool-runtime';
+import type { ToolBudget } from '../tools/tool-budget';
+import { PROPOSAL_TOOL_DEFINITIONS } from '../tools/proposal-tool-definitions';
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions';
 
 class FakeConversationStore implements ConversationStore {
@@ -78,14 +85,22 @@ class NoopToolRuntime implements ToolRuntime {
 
 class FakeToolRuntime implements ToolRuntime {
   executeCalls: { name: string; rawArguments: string }[] = [];
+  actors: ToolActor[] = [];
   results: ToolExecutionResult[] = [];
+  toolDefinitions: ToolDefinition[] = TOOL_DEFINITIONS;
 
   definitions() {
-    return TOOL_DEFINITIONS;
+    return this.toolDefinitions;
   }
 
-  async execute(call: { name: string; rawArguments: string }): Promise<ToolExecutionResult> {
+  async execute(
+    call: { name: string; rawArguments: string },
+    _budget: ToolBudget,
+    _signal: AbortSignal,
+    actor: ToolActor,
+  ): Promise<ToolExecutionResult> {
     this.executeCalls.push(call);
+    this.actors.push(actor);
     return (
       this.results.shift() ?? {
         status: 'done',
@@ -656,6 +671,134 @@ describe('ChatService', () => {
       expect(seenTools).toBeUndefined();
       expect(events.some((e) => e.type === 'tool')).toBe(false);
       expect(toolRuntime.executeCalls).toEqual([]);
+    });
+
+    it('tells the tool runtime which account and conversation it is running for', async () => {
+      const toolRuntime = new FakeToolRuntime();
+      let calls = 0;
+      async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        if (calls === 1) {
+          yield doneChunk('tool_calls', {
+            toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query":"x"}' }],
+          });
+        } else {
+          yield doneChunk('stop');
+        }
+      }
+
+      const service = new ChatService(
+        new FakeConversationStore(),
+        new FakeUsageService(),
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      await service.run('7', body, () => undefined, new AbortController().signal);
+
+      expect(toolRuntime.actors).toEqual([{ accountId: 7, conversationId: 'conv-1' }]);
+    });
+
+    it('carries a proposal card from the tool result onto the chip and the saved row', async () => {
+      const conversationStore = new FakeConversationStore();
+      const toolRuntime = new FakeToolRuntime();
+      toolRuntime.toolDefinitions = [...TOOL_DEFINITIONS, ...PROPOSAL_TOOL_DEFINITIONS];
+      const card = {
+        id: 'p1',
+        kind: 'calendar_event' as const,
+        status: 'pending' as const,
+        title: 'Dentist',
+        fields: [],
+        link: null,
+        error: null,
+        confirmable: true,
+        expiresAt: '2026-09-08T09:59:00.000Z',
+        conversationId: 'conv-1',
+      };
+      toolRuntime.results = [
+        {
+          status: 'done',
+          content: 'Proposed — this has NOT happened yet.',
+          label: 'Proposed: Dentist',
+          sources: [],
+          proposal: card,
+        },
+      ];
+
+      let calls = 0;
+      async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        if (calls === 1) {
+          yield doneChunk('tool_calls', {
+            toolCalls: [
+              { id: 'call-1', name: 'create_calendar_event', arguments: '{"title":"Dentist"}' },
+            ],
+          });
+        } else {
+          yield doneChunk('stop');
+        }
+      }
+
+      const service = new ChatService(
+        conversationStore,
+        new FakeUsageService(),
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      const events: ChatEvent[] = [];
+      await service.run('7', body, (e) => events.push(e), new AbortController().signal);
+
+      expect(events[1]).toEqual({
+        type: 'tool',
+        chip: {
+          callId: 'call-1',
+          name: 'create_calendar_event',
+          status: 'running',
+          label: 'Preparing…',
+          sources: [],
+        },
+      });
+      expect(events[2]).toEqual({
+        type: 'tool',
+        chip: {
+          callId: 'call-1',
+          name: 'create_calendar_event',
+          status: 'done',
+          label: 'Proposed: Dentist',
+          sources: [],
+          proposal: card,
+        },
+      });
+      expect(conversationStore.saveToolCallsCalls[0].chips[0].proposal).toEqual(card);
+    });
+
+    it('warns the model that a proposal is not an action, only when write tools are offered', async () => {
+      async function collectSystemPrompt(definitions: ToolDefinition[]): Promise<string> {
+        const toolRuntime = new FakeToolRuntime();
+        toolRuntime.toolDefinitions = definitions;
+        let seen = '';
+        async function* stream(params: OpencodeChatCompletionParams): AsyncGenerator<OpencodeStreamChunk> {
+          seen = String(params.messages[0].content);
+          yield doneChunk('stop');
+        }
+        const service = new ChatService(
+          new FakeConversationStore(),
+          new FakeUsageService(),
+          fakeOpencodeService(stream),
+          toolRuntime,
+        );
+        await service.run('7', body, () => undefined, new AbortController().signal);
+        return seen;
+      }
+
+      const withWrites = await collectSystemPrompt([
+        ...TOOL_DEFINITIONS,
+        ...PROPOSAL_TOOL_DEFINITIONS,
+      ]);
+      expect(withWrites).toContain('Confirm');
+      expect(withWrites).toContain('never say');
+
+      const withoutWrites = await collectSystemPrompt(TOOL_DEFINITIONS);
+      expect(withoutWrites).not.toContain('Confirm');
     });
   });
 });

@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
-import type { Briefing } from '@contracts';
+import { Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 
 import { renderMarkdownToHtml } from '../core/markdown';
 import { ChattyLogo } from '../shared/chatty-logo';
@@ -26,7 +27,7 @@ import { RealBriefingApi } from './real-briefing-api';
     <div class="shell">
       <header class="topbar">
         <span class="brand"><app-chatty-logo [size]="26" /></span>
-        <app-today-chat-switch active="today" />
+        <app-today-chat-switch active="today" [pendingCount]="pendingCount()" />
       </header>
 
       <main class="body">
@@ -46,14 +47,35 @@ import { RealBriefingApi } from './real-briefing-api';
             -->
             <section class="card connect-card">
               <h2>Connect Google</h2>
-              <p>Chatty builds this page from your calendar and mail. It only reads.</p>
+              <p>Chatty builds this page from your calendar and mail, and can draft things back once you approve them.</p>
               <ul class="scope-list">
                 <li><span aria-hidden="true">📅</span><span>Read today's events</span></li>
                 <li><span aria-hidden="true">✉️</span><span>Read recent mail — subjects and previews only</span></li>
+                <li><span aria-hidden="true">✅</span><span>Create events, tasks and emails you confirm first</span></li>
               </ul>
               <a class="connect" href="/auth/google/connect">Connect Google</a>
+              <p class="hint">Nothing is written to Google until you tap Confirm on a card.</p>
             </section>
           } @else {
+            @if (b.pending.length) {
+              <section class="card card--queue">
+                <h2>Waiting on you · {{ b.pending.length }}</h2>
+                @for (item of b.pending; track item.id) {
+                  <div class="queue-item">
+                    <span class="queue-item__kind" aria-hidden="true">{{ icon(item.kind) }}</span>
+                    <span class="queue-item__body">
+                      {{ item.title }}
+                      <span class="queue-item__meta">{{ item.fields[0]?.value }}</span>
+                    </span>
+                    @if (item.conversationId) {
+                      <button type="button" class="queue-item__go" (click)="review(item)">
+                        Review
+                      </button>
+                    }
+                  </div>
+                }
+              </section>
+            }
             @if (b.summary) {
               <!--
                 Unlike message-bubble.ts this component keeps Angular's default
@@ -171,14 +193,49 @@ import { RealBriefingApi } from './real-briefing-api';
       font-size: 0.9rem;
     }
     .scope-list li { display: flex; gap: 0.5rem; align-items: baseline; }
+    .card--queue {
+      border: 1px solid var(--oc-accent, #ff6f59);
+    }
+    .queue-item {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      padding: 0.35rem 0;
+    }
+    .queue-item__kind {
+      flex-shrink: 0;
+    }
+    .queue-item__body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .queue-item__meta {
+      font-size: 0.78rem;
+      color: var(--oc-text-muted, #6f7a76);
+    }
+    .queue-item__go {
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 0.3em 0.9em;
+      border-radius: 999px;
+      border: none;
+      background: var(--oc-accent, #ff6f59);
+      color: #fff;
+      cursor: pointer;
+    }
   `,
 })
 export class BriefingShell {
   private readonly api = inject(BRIEFING_API);
+  private readonly router = inject(Router);
 
   protected readonly briefing = signal<Briefing | null>(null);
   protected readonly loading = signal(true);
   protected readonly failed = signal(false);
+  protected readonly pendingCount = computed(() => this.briefing()?.pending.length ?? 0);
 
   constructor() {
     this.api.getBriefing().subscribe({
@@ -195,6 +252,29 @@ export class BriefingShell {
 
   protected renderedSummary(): string {
     return renderMarkdownToHtml(this.briefing()?.summary ?? '');
+  }
+
+  protected icon(kind: ProposalKind): string {
+    return { calendar_event: '📅', task: '✅', email: '✉️' }[kind];
+  }
+
+  /**
+   * Opens the card, rather than acting on it. Today knows which conversation
+   * the proposal was made in; chat-shell reads these two params and scrolls
+   * to the card. Deliberately not a Confirm button: one implementation of the
+   * gate, in one place, is what makes "the card and the executed action are
+   * the same thing" checkable.
+   */
+  protected review(card: ProposalCard): void {
+    if (!card.conversationId) {
+      // The conversation was deleted while this proposal was still pending
+      // (the column is ON DELETE SET NULL). There is no card to jump to, so
+      // the template hides the button rather than navigating nowhere.
+      return;
+    }
+    void this.router.navigate(['/chat'], {
+      queryParams: { conversation: card.conversationId, proposal: card.id },
+    });
   }
 
   /** `2026-09-05T09:00:00+02:00` -> `09:00`. The offset is already the user's zone. */

@@ -8,6 +8,8 @@ import type {
 } from '@contracts/conversation';
 import { conversations, messageToolCalls, messages } from '../db/schema';
 import { DB, type Db } from '../db/tokens';
+import { toProposalCard } from '../proposals/proposal-card';
+import { ProposalsRepository } from '../proposals/proposals.repository';
 import type {
   ConversationHistoryMessage,
   ConversationStore,
@@ -44,7 +46,10 @@ const TITLE_MAX_LEN = 60;
 //     this service to that token with `useExisting`.
 @Injectable()
 export class ConversationsService implements ConversationStore {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly proposalsRepository: ProposalsRepository,
+  ) {}
 
   async startExchange(
     input: StartExchangeInput,
@@ -152,6 +157,10 @@ export class ConversationsService implements ConversationStore {
         status: chip.status === 'running' ? 'failed' : chip.status,
         label: chip.label,
         sources: chip.sources,
+        // Only the link is stored. The card itself is rebuilt on every read
+        // (see loadToolCallsByMessageId) so a proposal confirmed after this
+        // message was written can never render a stale "Confirm" button.
+        proposalId: chip.proposal?.id ?? null,
       })),
     );
   }
@@ -283,22 +292,34 @@ export class ConversationsService implements ConversationStore {
         status: messageToolCalls.status,
         label: messageToolCalls.label,
         sources: messageToolCalls.sources,
+        proposalId: messageToolCalls.proposalId,
       })
       .from(messageToolCalls)
       .where(inArray(messageToolCalls.messageId, messageIds))
       .orderBy(asc(messageToolCalls.ordinal));
+
+    // One extra query for the whole conversation, not one per chip.
+    const proposalRows = await this.proposalsRepository.findManyByIds(
+      rows.map((row) => row.proposalId).filter((id): id is string => Boolean(id)),
+    );
+    const now = new Date();
+    const cardsById = new Map(
+      proposalRows.map((row) => [row.id, toProposalCard(row, now)] as const),
+    );
 
     for (const row of rows) {
       // The row's own id, not the upstream tool_calls[].id — Wave 1.5
       // deliberately doesn't persist that (see the plan's "tool results
       // are ephemeral" note); this only needs to be unique per chip for
       // the UI to key/track by it.
+      const card = row.proposalId ? cardsById.get(row.proposalId) : undefined;
       const chip: ToolCallChip = {
         callId: row.id,
         name: row.name as ToolCallChip['name'],
         status: row.status as ToolCallChip['status'],
         label: row.label,
         sources: row.sources,
+        ...(card ? { proposal: card } : {}),
       };
       const existing = byMessageId.get(row.messageId);
       if (existing) {

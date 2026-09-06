@@ -92,6 +92,12 @@ export const messageToolCalls = pgTable(
     status: text('status').notNull(),
     label: text('label').notNull(),
     sources: jsonb('sources').$type<ToolSource[]>().notNull().default([]),
+    // Wave 2: set only for the three write tools. ON DELETE SET NULL, not
+    // CASCADE — deleting a proposal must not delete the transcript of the
+    // message that proposed it.
+    proposalId: uuid('proposal_id').references(() => proposals.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -125,6 +131,65 @@ export const googleConnections = pgTable('google_connections', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * A write the model proposed and the user has not (yet) confirmed.
+ *
+ * This table is the entire blast radius of the write tools: a tool call can
+ * insert a row here for its own account and can do nothing else. The Google
+ * call happens in POST /api/proposals/:id/confirm, which re-reads the row by
+ * id — so what the card renders is what gets executed.
+ *
+ * `payload` is one of the validated shapes in
+ * src/proposals/proposal-payloads.ts. It is written once, by the tool, and
+ * never updated: an edit would break the "the card and the executor read the
+ * same row" property.
+ *
+ * There is deliberately no 'expired' status. Expiry is derived at read time
+ * from `created_at` (see proposal-card.ts) so no scheduled job is needed.
+ */
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    // Nullable: the conversation may be deleted while a proposal is still
+    // pending, and that must not delete the record of what was executed.
+    conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'set null',
+    }),
+    kind: text('kind').notNull(),
+    payload: jsonb('payload').notNull(),
+    status: text('status').notNull().default('pending'),
+    /** Google's id for the created item. Null until executed. */
+    externalId: text('external_id'),
+    /** Google's web link to the created item, when it returns one. */
+    externalLink: text('external_link'),
+    /** Why execution failed. Never carries a Google response body. */
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    check(
+      'proposals_kind_check',
+      sql`${table.kind} in ('calendar_event','task','email')`,
+    ),
+    check(
+      'proposals_status_check',
+      sql`${table.status} in ('pending','executing','executed','discarded','failed')`,
+    ),
+    index('proposals_account_id_status_idx').on(table.accountId, table.status),
+  ],
+);
 
 export const usageCounters = pgTable(
   'usage_counters',

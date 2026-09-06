@@ -7,6 +7,8 @@ import { PostgresUsageService } from '../db/postgres-usage.service';
 import { TOOL_RUNTIME } from '../tools/tool-runtime';
 import { ToolRuntimeImpl } from '../tools/tool-runtime.impl';
 import { createSearchProvider } from '../tools/search-provider';
+import { ProposalsModule } from '../proposals/proposals.module';
+import { ProposalsService } from '../proposals/proposals.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { CONVERSATION_STORE } from './conversation-store';
@@ -19,7 +21,7 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
 // in-memory classes remain useful for isolated unit tests but are not part
 // of the production module graph.
 @Module({
-  imports: [OpencodeModule, ConversationsModule, DbModule],
+  imports: [OpencodeModule, ConversationsModule, DbModule, ProposalsModule],
   controllers: [ChatController],
   providers: [
     ChatService,
@@ -32,8 +34,14 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
       // requirement). It only validates when WEB_SEARCH_ENABLED=true;
       // with search off it hands back a DisabledSearchProvider, so the
       // flag being off cannot keep the pod from booting.
+      //
+      // ProposalsService is injected as the write tools' only route to
+      // anything stateful. With GOOGLE_WRITE_TOOLS_ENABLED unset, the
+      // runtime does not offer those tools at all.
       provide: TOOL_RUNTIME,
-      useFactory: () => new ToolRuntimeImpl(createSearchProvider()),
+      inject: [ProposalsService],
+      useFactory: (proposals: ProposalsService) =>
+        new ToolRuntimeImpl(createSearchProvider(), proposals),
     },
   ],
 })

@@ -1,3 +1,5 @@
+import type { ProposalCard } from './proposal';
+
 /** Request body of `POST /api/chat`. */
 export interface ChatRequest {
   conversationId?: string;
@@ -5,8 +7,17 @@ export interface ChatRequest {
   content: string;
 }
 
-/** The two model-driven tools introduced in Wave 1.5. */
-export type ToolName = 'web_search' | 'web_fetch';
+/**
+ * Model-driven tools. The first two read; the last three only ever write a
+ * `proposals` row that the user must confirm — see
+ * apps/api/src/tools/proposal-tool-definitions.ts.
+ */
+export type ToolName =
+  | 'web_search'
+  | 'web_fetch'
+  | 'create_calendar_event'
+  | 'create_task'
+  | 'send_email';
 
 /** A source the assistant actually consulted. Rendered as a link. */
 export interface ToolSource {
@@ -22,6 +33,13 @@ export interface ToolCallChip {
   /** Human line, e.g. `Searched "hacker news top story"` or `Read nginx.org`. */
   label: string;
   sources: ToolSource[];
+  /**
+   * Present only for the three write tools, and only when the proposal was
+   * actually persisted. Always re-read from the `proposals` row when a
+   * conversation is loaded, so a stale "Confirm" never appears on an event
+   * that was already created.
+   */
+  proposal?: ProposalCard;
 }
 
 /**

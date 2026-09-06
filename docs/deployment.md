@@ -255,3 +255,20 @@ The daily briefing (Today screen) reads the user's Google Calendar and Gmail via
     --from-literal=GOOGLE_TOKEN_ENCRYPTION_KEY='<paste>' \
     --dry-run=client -o yaml | kubectl -n chatty patch secret chatty-auth --patch-file=/dev/stdin
   ```
+
+## Google write tools
+
+The model can propose a calendar event, a task or an email as a card the user must confirm. Before turning this on, complete the following prerequisites:
+
+- [ ] **P1** — Google Cloud Console → *APIs & Services → Library* → enable **Google Tasks API** (Calendar and Gmail were already enabled by the briefing setup above).
+- [ ] **P2** — *APIs & Services → OAuth consent screen → Data Access* → add three scopes:
+  - `https://www.googleapis.com/auth/calendar.events` (sensitive)
+  - `https://www.googleapis.com/auth/tasks` (sensitive)
+  - `https://www.googleapis.com/auth/gmail.send` (**sensitive**, not restricted — sending is a lower tier than drafting, because `gmail.compose` implies mailbox access. `gmail.readonly` from the briefing setup already put this project in the restricted bucket, so this adds no new verification burden.)
+- [ ] **P3** — Confirm the publishing status is still **In production** (not *Testing* — there refresh tokens expire after 7 days).
+- [ ] **P4** — After deploying, **reconnect** the Google account: existing `google_connections` rows hold a refresh token granted for the two read-only scopes only, and Google will refuse a write call with `insufficient permissions`. Visit `/briefing`, disconnect, connect again, and accept the larger consent screen. The confirm endpoint detects the old grant and says exactly this, so a missed reconnect fails loudly rather than silently.
+- [ ] **P5** — Set `GOOGLE_WRITE_TOOLS_ENABLED=true` in the cluster (chart value `app.googleWriteToolsEnabled`). With it unset or `false`, none of the three tools is offered to the model and behaviour is exactly as before this feature.
+
+Enabling write tools is a two-step rollout: deploy with `googleWriteToolsEnabled: false` first (the migration and endpoints ship inert), then flip the value and reconnect the Google account. The reverse is equally safe — turning it back off stops the tools being offered without touching any stored proposal.
+
+**The flag is not a kill switch, and this is deliberate.** It controls one thing: whether the three write tools are offered to the model. With it off nothing new can ever be proposed, but `POST /api/proposals/:id/confirm` keeps working, so a card already on screen can still be confirmed or discarded by the person looking at it. That is the safe asymmetry — turning the flag off must not strand a decision the user has already been asked to make. If you need pending proposals to go dead as well (an incident, a compromised model), discard them from the cards or add a `writeToolsEnabled()` check at the top of `ProposalsService.confirm`; there is deliberately no such check today.

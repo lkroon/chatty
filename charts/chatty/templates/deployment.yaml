@@ -50,6 +50,10 @@ spec:
               value: {{ .Values.app.searxngBaseUrl | quote }}
             - name: TOOL_CAPABLE_MODELS
               value: {{ .Values.app.toolCapableModels | quote }}
+            - name: GOOGLE_WRITE_TOOLS_ENABLED
+              value: {{ .Values.app.googleWriteToolsEnabled | quote }}
+            - name: PROPOSAL_TTL_DAYS
+              value: {{ .Values.app.proposalTtlDays | quote }}
             - name: BRIEFING_TIMEZONE
               value: {{ .Values.app.briefingTimeZone | quote }}
             - name: BRIEFING_MODEL

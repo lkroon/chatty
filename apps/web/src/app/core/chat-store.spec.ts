@@ -1,10 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { Subject, of } from 'rxjs';
-import type { ChatEvent, ConversationDetail, ConversationListItem, Model } from '@contracts';
+import { Subject, of, throwError } from 'rxjs';
+import type { ChatEvent, ConversationDetail, ConversationListItem, Model, ProposalCard } from '@contracts';
 
 import { CHAT_API, ChatApi } from './chat-api';
 import { ChatStore } from './chat-store';
+import { testProposalCard } from './test-proposal';
 
 class FakeChatApi implements ChatApi {
   models: Model[] = [
@@ -35,6 +36,18 @@ class FakeChatApi implements ChatApi {
   }
   sendChat() {
     return this.chatEvents$.asObservable();
+  }
+  confirmResult: ProposalCard | Error = testProposalCard({
+    status: 'executed',
+    confirmable: false,
+  });
+  confirmProposal() {
+    return this.confirmResult instanceof Error
+      ? throwError(() => this.confirmResult)
+      : of(this.confirmResult);
+  }
+  discardProposal() {
+    return of(testProposalCard({ status: 'discarded', confirmable: false }));
   }
 }
 
@@ -258,5 +271,56 @@ describe('ChatStore', () => {
     const afterFirst = store.messages().length;
     store.send('second');
     expect(store.messages().length).toBe(afterFirst);
+  });
+
+  it('replaces the proposal on a stored message when it is confirmed', () => {
+    store.messages.set([
+      {
+        id: 'm1',
+        role: 'assistant',
+        content: 'Proposed.',
+        createdAt: 'now',
+        finishReason: null,
+        toolCalls: [
+          {
+            callId: 'chip-1',
+            name: 'create_calendar_event',
+            status: 'done',
+            label: 'Proposed: Dentist',
+            sources: [],
+            proposal: testProposalCard(),
+          },
+        ],
+      },
+    ]);
+
+    store.confirmProposal('p1');
+
+    expect(store.messages()[0].toolCalls![0].proposal!.status).toBe('executed');
+    expect(store.isProposalBusy('p1')).toBe(false);
+  });
+
+  it('replaces the proposal on an in-flight streaming chip too', () => {
+    store.streamingToolCalls.set([
+      {
+        callId: 'chip-1',
+        name: 'create_calendar_event',
+        status: 'done',
+        label: 'Proposed: Dentist',
+        sources: [],
+        proposal: testProposalCard(),
+      },
+    ]);
+
+    store.discardProposal('p1');
+
+    expect(store.streamingToolCalls()[0].proposal!.status).toBe('discarded');
+  });
+
+  it('surfaces the server\'s own message when a confirm is refused', () => {
+    api.confirmResult = new Error('Google was connected before this permission existed.');
+    store.confirmProposal('p1');
+    expect(store.error()).toContain('before this permission existed');
+    expect(store.isProposalBusy('p1')).toBe(false);
   });
 });

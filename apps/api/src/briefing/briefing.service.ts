@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Briefing, BriefingEvent, BriefingMail, BriefingSection } from '@contracts/briefing';
+import type { ProposalCard } from '@contracts/proposal';
 import { OpencodeService } from '../opencode/opencode.service';
 import { GoogleTokenService } from '../google/google-token.service';
 import { NotConnectedError } from '../google/errors';
+import { ProposalsService } from '../proposals/proposals.service';
 import { fetchTodaysEvents } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
 
@@ -32,6 +34,7 @@ export class BriefingService {
     private readonly opencode: OpencodeService,
     @Inject(CALENDAR_FETCHER) private readonly fetchEvents: CalendarFetcher,
     @Inject(GMAIL_FETCHER) private readonly fetchMail: GmailFetcher,
+    private readonly proposals: ProposalsService,
   ) {}
 
   async build(accountId: number, model: string): Promise<Briefing> {
@@ -50,16 +53,19 @@ export class BriefingService {
           summary: '',
           calendar: { status: 'not_connected' },
           mail: { status: 'not_connected' },
+          pending: [],
           generatedAt,
         };
       }
       throw err;
     }
 
-    // Both sections in parallel, each surviving the other's failure.
-    const [calendarResult, mailResult] = await Promise.allSettled([
+    // Three fetches, one round trip. Proposals join the same allSettled so a
+    // slow or broken proposals query costs the page nothing.
+    const [calendarResult, mailResult, pendingResult] = await Promise.allSettled([
       this.fetchEvents(accessToken, date, timeZone),
       this.fetchMail(accessToken),
+      this.proposals.pendingForAccount(accountId),
     ]);
 
     const calendar = this.toSection<BriefingEvent>(
@@ -68,9 +74,24 @@ export class BriefingService {
       'calendar',
     );
     const mail = this.toSection<BriefingMail>(mailResult, 'Could not read your mail.', 'mail');
+    const pending = this.toPending(pendingResult);
 
     const summary = await this.summarize(model, date, timeZone, calendar, mail);
-    return { date, timeZone, summary, calendar, mail, generatedAt };
+    return { date, timeZone, summary, calendar, mail, pending, generatedAt };
+  }
+
+  /**
+   * Unlike the calendar and mail sections this one has no error state on the
+   * contract: an empty queue and an unreadable queue look the same to the
+   * user, and inventing a third rendering for a list that is empty 99% of the
+   * time is not worth it. The failure is logged, not shown.
+   */
+  private toPending(result: PromiseSettledResult<ProposalCard[]>): ProposalCard[] {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    }
+    this.logger.warn(`briefing pending section failed: ${(result.reason as Error)?.message}`);
+    return [];
   }
 
   private toSection<T>(

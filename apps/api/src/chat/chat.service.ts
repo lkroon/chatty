@@ -7,16 +7,23 @@ import { isToolCapableModel } from './tool-capable-models';
 import { OpencodeService } from '../opencode/opencode.service';
 import { OpencodeUpstreamError } from '../opencode/opencode-client.types';
 import type { OpencodeMessage } from '../opencode/opencode-client.types';
-import { TOOL_RUNTIME, ToolRuntime } from '../tools/tool-runtime';
+import { TOOL_RUNTIME, ToolRuntime, type ToolActor } from '../tools/tool-runtime';
 import { MAX_TOOL_ROUNDS, ToolBudget } from '../tools/tool-budget';
 
-/** `Searching…` / `Reading…` — the real label arrives with the result. */
+/** `Searching…` / `Reading…` / `Preparing…` — the real label arrives with the result. */
 function provisionalLabel(name: string): string {
   if (name === 'web_search') {
     return 'Searching…';
   }
   if (name === 'web_fetch') {
     return 'Reading…';
+  }
+  if (
+    name === 'create_calendar_event' ||
+    name === 'create_task' ||
+    name === 'send_email'
+  ) {
+    return 'Preparing…';
   }
   return 'Working…';
 }
@@ -25,21 +32,35 @@ function provisionalLabel(name: string): string {
  * Wave 1.5: web search/fetch are model-driven tools, only offered when
  * WEB_SEARCH_ENABLED and the model is in TOOL_CAPABLE_MODELS. When tools
  * aren't offered this exchange, the prompt is just the first sentence.
+ *
+ * Wave 2 adds the paragraph about proposals. It is not decoration: a model
+ * that thinks `create_calendar_event` created something writes "I've added
+ * that to your calendar" above a card the user has not touched.
  */
-function buildSystemPrompt(toolsOffered: boolean): string {
+function buildSystemPrompt(toolsOffered: boolean, proposalToolsOffered: boolean): string {
   const today = new Date().toISOString().slice(0, 10);
   const base = `You are a helpful assistant in a personal chat app. Today's date is ${today}.`;
   if (!toolsOffered) {
     return base;
   }
-  return (
+  const web =
     `${base}\n` +
     'You can search the web and fetch pages. Use web_search when the answer depends on\n' +
     'current events, prices, releases, versions, or anything you are unsure is still\n' +
     'true. Use web_fetch only on URLs the user gave you or that web_search returned —\n' +
     'never on a URL you guessed. Prefer one search and at most one or two fetches.\n' +
     'Cite the sources you actually used as inline markdown links. If the tools fail or\n' +
-    'return nothing useful, say so plainly instead of guessing.'
+    'return nothing useful, say so plainly instead of guessing.';
+  if (!proposalToolsOffered) {
+    return web;
+  }
+  return (
+    `${web}\n` +
+    'You can also propose calendar events, tasks and emails. Those tools do not perform\n' +
+    'the action: each one shows the user a card that only they can Confirm. After\n' +
+    'calling one, say what you proposed and that it is waiting for their confirmation —\n' +
+    'never say you created, added, scheduled or sent anything. Give times as local\n' +
+    'wall-clock values like 2026-09-08T15:00:00, with no timezone offset.'
   );
 }
 
@@ -107,6 +128,16 @@ export class ChatService {
     let totalCost: number | null = null;
 
     const toolsOffered = isToolCapableModel(body.model);
+    // The runtime is the authority on what is offered — it decides from the
+    // env flag and from whether a proposal port was wired at bootstrap — so
+    // the prompt can never promise a tool the model was not given.
+    const proposalToolsOffered =
+      toolsOffered &&
+      this.toolRuntime
+        .definitions()
+        .some((definition) => definition.function.name === 'create_calendar_event');
+
+    const actor: ToolActor = { accountId: Number(accountId), conversationId };
 
     try {
       const history = await this.conversationStore.getHistory({
@@ -116,7 +147,7 @@ export class ChatService {
       });
 
       const messages: OpencodeMessage[] = [
-        { role: 'system', content: buildSystemPrompt(toolsOffered) },
+        { role: 'system', content: buildSystemPrompt(toolsOffered, proposalToolsOffered) },
         ...history.map((h) => ({ role: h.role, content: h.content })),
       ];
 
@@ -207,6 +238,7 @@ export class ChatService {
             { name: call.name, rawArguments: call.arguments },
             budget,
             signal,
+            actor,
           );
 
           const finishedChip: ToolCallChip = {
@@ -214,6 +246,7 @@ export class ChatService {
             status: result.status,
             label: result.label,
             sources: result.sources,
+            ...(result.proposal ? { proposal: result.proposal } : {}),
           };
           const index = chips.findIndex((c) => c.callId === call.id);
           chips[index] = finishedChip;

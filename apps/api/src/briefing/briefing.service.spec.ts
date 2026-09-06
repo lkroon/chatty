@@ -1,3 +1,4 @@
+import type { ProposalCard } from '@contracts/proposal';
 import { BriefingService } from './briefing.service';
 import { NotConnectedError } from '../google/errors';
 import type { OpencodeStreamChunk } from '../opencode/opencode-client.types';
@@ -10,11 +11,36 @@ function stream(chunks: OpencodeStreamChunk[]): AsyncGenerator<OpencodeStreamChu
   })();
 }
 
+function pendingCard(id: string): ProposalCard {
+  return {
+    id,
+    kind: 'calendar_event',
+    status: 'pending',
+    title: 'Dentist',
+    fields: [{ label: 'When', value: 'Tue 8 Sep 2026, 15:00 – 15:45' }],
+    link: null,
+    error: null,
+    confirmable: true,
+    expiresAt: '2026-09-08T09:59:00.000Z',
+    conversationId: 'c1',
+  };
+}
+
+class FakeProposals {
+  cards: ProposalCard[] = [];
+  calledWith: number | null = null;
+  async pendingForAccount(accountId: number): Promise<ProposalCard[]> {
+    this.calledWith = accountId;
+    return this.cards;
+  }
+}
+
 describe('BriefingService', () => {
   let tokens: { getAccessToken: jest.Mock };
   let opencode: { streamChatCompletion: jest.Mock };
   let calendar: jest.Mock;
   let gmail: jest.Mock;
+  let proposals: FakeProposals;
   let service: BriefingService;
 
   beforeEach(() => {
@@ -35,7 +61,8 @@ describe('BriefingService', () => {
     gmail = jest.fn().mockResolvedValue([
       { id: 'm1', from: 'a@b.c', subject: 'Hi', snippet: 's', receivedAt: '2026-09-05T07:00:00.000Z' },
     ]);
-    service = new BriefingService(tokens as never, opencode as never, calendar, gmail);
+    proposals = new FakeProposals();
+    service = new BriefingService(tokens as never, opencode as never, calendar, gmail, proposals as never);
   });
 
   it('returns both sections and the summary', async () => {
@@ -90,5 +117,30 @@ describe('BriefingService', () => {
     const briefing = await service.build(1, 'glm-5.3-flash');
     expect(opencode.streamChatCompletion).not.toHaveBeenCalled();
     expect(briefing.summary).toBe('');
+  });
+
+  it('carries the account\'s pending proposals', async () => {
+    proposals.cards = [pendingCard('p1')];
+    const briefing = await service.build(7, 'model-x');
+    expect(proposals.calledWith).toBe(7);
+    expect(briefing.pending.map((card) => card.id)).toEqual(['p1']);
+  });
+
+  it('returns an empty list rather than failing when proposals cannot be read', async () => {
+    // A broken proposals query must not cost the user their agenda. Same
+    // rule the calendar and mail sections already follow.
+    proposals.pendingForAccount = () => Promise.reject(new Error('boom'));
+    const briefing = await service.build(7, 'model-x');
+    expect(briefing.pending).toEqual([]);
+    expect(briefing.calendar.status).toBe('ok');
+  });
+
+  it('sends no pending proposals to the summarizer', async () => {
+    // The summary describes the day, not the queue. Proposals are the
+    // model's own output coming back around; feeding them in invites it to
+    // narrate "I have already scheduled..." over a card nobody confirmed.
+    proposals.cards = [pendingCard('p1')];
+    await service.build(7, 'model-x');
+    expect(JSON.stringify(opencode.streamChatCompletion.mock.calls[0][0])).not.toContain('p1');
   });
 });

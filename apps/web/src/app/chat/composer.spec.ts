@@ -5,6 +5,7 @@ import type { ChatEvent } from '@contracts';
 
 import { CHAT_API, ChatApi } from '../core/chat-api';
 import { ChatStore } from '../core/chat-store';
+import { testProposalCard } from '../core/test-proposal';
 import { Composer } from './composer';
 
 class StubChatApi implements ChatApi {
@@ -22,6 +23,12 @@ class StubChatApi implements ChatApi {
   }
   sendChat() {
     return of<ChatEvent>();
+  }
+  confirmProposal() {
+    return of(testProposalCard({ status: 'executed', confirmable: false }));
+  }
+  discardProposal() {
+    return of(testProposalCard({ status: 'discarded', confirmable: false }));
   }
 }
 

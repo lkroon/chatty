@@ -7,6 +7,7 @@ import type {
   ConversationDetail,
   ConversationListItem,
   Model,
+  ProposalCard,
 } from '@contracts';
 
 import { ChatApi } from './chat-api';
@@ -107,6 +108,36 @@ export class RealChatApi implements ChatApi {
 
       return () => controller.abort();
     });
+  }
+
+  confirmProposal(id: string): Observable<ProposalCard> {
+    return from(this.postProposal(`/api/proposals/${encodeURIComponent(id)}/confirm`));
+  }
+
+  discardProposal(id: string): Observable<ProposalCard> {
+    return from(this.postProposal(`/api/proposals/${encodeURIComponent(id)}/discard`));
+  }
+
+  /**
+   * POST with no body, and surface the server's own message on failure —
+   * "Google was connected before this permission existed…" is the whole
+   * value of a 409 here, and `request()`'s generic message would throw it
+   * away.
+   */
+  private async postProposal(path: string): Promise<ProposalCard> {
+    const response = await fetch(path, { method: 'POST' });
+    if (this.redirectIfUnauthenticated(response)) {
+      throw new Error('authentication required');
+    }
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message =
+        payload && typeof (payload as { message?: unknown }).message === 'string'
+          ? (payload as { message: string }).message
+          : `request to ${path} failed (${response.status})`;
+      throw new Error(message);
+    }
+    return payload as ProposalCard;
   }
 
   /** Returns true (and navigates) when the response is a 401/403. */

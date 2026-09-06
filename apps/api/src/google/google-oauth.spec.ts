@@ -1,8 +1,10 @@
 import {
   BRIEFING_SCOPES,
+  REQUIRED_SCOPE_BY_KIND,
   buildConsentUrl,
   exchangeCodeForTokens,
   refreshAccessToken,
+  writeToolsEnabled,
 } from './google-oauth';
 
 describe('google-oauth', () => {
@@ -126,6 +128,52 @@ describe('google-oauth', () => {
       ) as unknown as typeof fetch;
 
       await expect(refreshAccessToken('rt')).rejects.toThrow(/Google token refresh failed \(500\)/);
+    });
+  });
+
+  describe('write scopes', () => {
+    // Every test in this block mutates the flag. Restore it, or the tests that
+    // follow inherit whatever the last one set.
+    const previous = process.env.GOOGLE_WRITE_TOOLS_ENABLED;
+
+    afterEach(() => {
+      if (previous === undefined) {
+        delete process.env.GOOGLE_WRITE_TOOLS_ENABLED;
+      } else {
+        process.env.GOOGLE_WRITE_TOOLS_ENABLED = previous;
+      }
+    });
+
+    it('requests only the read scopes when write tools are off', () => {
+      delete process.env.GOOGLE_WRITE_TOOLS_ENABLED;
+      const url = new URL(buildConsentUrl('s'));
+      expect(url.searchParams.get('scope')).toBe(BRIEFING_SCOPES.join(' '));
+      expect(writeToolsEnabled()).toBe(false);
+    });
+
+    it('adds the three write scopes when write tools are on', () => {
+      process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'true';
+      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      expect(scope).toContain('https://www.googleapis.com/auth/calendar.events');
+      expect(scope).toContain('https://www.googleapis.com/auth/tasks');
+      expect(scope).toContain('https://www.googleapis.com/auth/gmail.send');
+      // The read scopes must still be requested — this is one grant, not two.
+      expect(scope).toContain('https://www.googleapis.com/auth/gmail.readonly');
+    });
+
+    it('treats any value other than the exact string "true" as off', () => {
+      process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'yes';
+      expect(writeToolsEnabled()).toBe(false);
+    });
+  });
+
+  describe('REQUIRED_SCOPE_BY_KIND', () => {
+    it('maps every proposal kind to the scope its write needs', () => {
+      expect(REQUIRED_SCOPE_BY_KIND).toEqual({
+        calendar_event: 'https://www.googleapis.com/auth/calendar.events',
+        task: 'https://www.googleapis.com/auth/tasks',
+        email: 'https://www.googleapis.com/auth/gmail.send',
+      });
     });
   });
 });

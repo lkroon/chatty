@@ -8,10 +8,12 @@ import type {
   ConversationDetail,
   ConversationListItem,
   Model,
+  ProposalCard,
 } from '@contracts';
 
 import { CHAT_API, ChatApi } from '../core/chat-api';
 import { ChatStore } from '../core/chat-store';
+import { testProposalCard } from '../core/test-proposal';
 import { ChatShell } from './chat-shell';
 
 class TestChatApi implements ChatApi {
@@ -54,6 +56,14 @@ class TestChatApi implements ChatApi {
   sendChat(request: ChatRequest): Observable<ChatEvent> {
     this.lastRequest = request;
     return this.events$.asObservable();
+  }
+
+  confirmProposal(): Observable<ProposalCard> {
+    return of(testProposalCard({ status: 'executed', confirmable: false }));
+  }
+
+  discardProposal(): Observable<ProposalCard> {
+    return of(testProposalCard({ status: 'discarded', confirmable: false }));
   }
 }
 

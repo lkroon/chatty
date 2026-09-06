@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
+import { ProposalsModule } from '../proposals/proposals.module';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 
@@ -8,7 +9,7 @@ import { ConversationsService } from './conversations.service';
 // startExchange/finalizeAssistantMessage, structurally matching
 // workstream A's ConversationStore seam — see conversations.service.ts.
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, ProposalsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

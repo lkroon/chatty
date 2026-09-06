@@ -18,6 +18,7 @@ const CONNECTED: Briefing = {
     ],
   },
   mail: { status: 'ok', items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }] },
+  pending: [],
   generatedAt: '2026-09-05T06:00:00.000Z',
 };
 
@@ -105,5 +106,31 @@ describe('BriefingShell', () => {
     const el = setup(api);
     expect(el.textContent).toContain('Nothing scheduled.');
     expect(el.textContent).toContain('No unread mail.');
+  });
+
+  it('lists what is waiting, above the agenda', () => {
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      pending: [
+        {
+          id: 'p1',
+          kind: 'email' as const,
+          status: 'pending' as const,
+          title: 'Lunch on Thursday?',
+          fields: [{ label: 'To', value: 'sanne@example.com' }],
+          link: null,
+          error: null,
+          confirmable: true,
+          expiresAt: '2026-09-08T09:59:00.000Z',
+          conversationId: 'c1',
+        },
+      ],
+    };
+    const el = setup(api);
+    expect(el.textContent).toContain('Waiting on you');
+    expect(el.textContent).toContain('Lunch on Thursday?');
+    // A pointer, not a control: Today never confirms.
+    expect(el.querySelector('.proposal__confirm')).toBeNull();
   });
 });
