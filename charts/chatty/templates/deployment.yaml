@@ -50,6 +50,10 @@ spec:
               value: {{ .Values.app.searxngBaseUrl | quote }}
             - name: TOOL_CAPABLE_MODELS
               value: {{ .Values.app.toolCapableModels | quote }}
+            - name: BRIEFING_TIMEZONE
+              value: {{ .Values.app.briefingTimeZone | quote }}
+            - name: BRIEFING_MODEL
+              value: {{ .Values.app.briefingModel | quote }}
             - name: APP_VERSION
               value: {{ .Values.imageTag | quote }}
             # Downward API: pod identity, useful for logs/diagnostics
@@ -71,8 +75,8 @@ spec:
                   fieldPath: spec.nodeName
           envFrom:
             # Created out-of-band (kubectl, not this chart): OPENCODE_API_KEY,
-            # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET. See
-            # k8s/cluster-up.sh.
+            # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET,
+            # GOOGLE_TOKEN_ENCRYPTION_KEY. See k8s/cluster-up.sh.
             - secretRef:
                 name: {{ .Values.authSecretName }}
           readinessProbe:

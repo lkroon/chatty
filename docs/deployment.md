@@ -20,14 +20,15 @@ Create it with:
 kubectl -n chatty create secret generic chatty-auth --from-env-file=.env
 ```
 
-The `.env` file for this command must contain **exactly** these four keys —
-five when `app.searchProvider=brave` (the chart's default; see
+The `.env` file for this command must contain **exactly** these five keys —
+six when `app.searchProvider=brave` (the chart's default; see
 [Web search (Wave 1.5)](#web-search-wave-15) below) — and nothing else:
 
 ```
 OPENCODE_API_KEY=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
+GOOGLE_TOKEN_ENCRYPTION_KEY=...   # see Google briefing setup (P5) below for how to generate this
 SESSION_SECRET=...
 BRAVE_SEARCH_API_KEY=...   # required: chart defaults to web search on, via brave
 ```
@@ -176,7 +177,7 @@ reconcile. The git commit is the only durable way to change what's deployed.
 
 ## Secret-refresh runbook
 
-To rotate or update any of the four keys in `chatty-auth` (e.g. a
+To rotate or update any of the five keys in `chatty-auth` (e.g. a
 rotated `OPENCODE_API_KEY`, a new `SESSION_SECRET`), re-create the Secret and
 restart the Deployment to pick it up — the app reads env vars at process
 start, it does not watch the Secret for changes.
@@ -187,7 +188,7 @@ kubectl -n chatty create secret generic chatty-auth \
 kubectl -n chatty rollout restart deployment/chatty
 ```
 
-(`.env` here is the minimal four-key file described in
+(`.env` here is the minimal five-key file described in
 [Secret creation runbook](#secret-creation-runbook) above, not the dev
 `.env`.)
 
@@ -234,3 +235,23 @@ to the chart's Deployment plus a `kubernetes.io/dockerconfigjson` Secret
 created out-of-band (same pattern as `chatty-auth`) with a GHCR
 read token. This is not the default for this project — only do it if the
 operator explicitly decides against making the package public.
+
+## Google briefing setup
+
+The daily briefing (Today screen) reads the user's Google Calendar and Gmail via an extra, opt-in OAuth grant. Before the briefing goes live, complete the following prerequisites:
+
+- [ ] **P1** — In Google Cloud Console → *APIs & Services → Library*, enable **Google Calendar API** and **Gmail API** for the existing project.
+- [ ] **P2** — *APIs & Services → Credentials* → the existing OAuth 2.0 Client ID → **Authorized redirect URIs** → add both:
+  - `https://chat.lkroon.nl/auth/google/connect/callback`
+  - `http://localhost:4200/auth/google/connect/callback`
+- [ ] **P3** — *APIs & Services → OAuth consent screen* → **Data Access** → add scopes:
+  - `https://www.googleapis.com/auth/calendar.readonly` (sensitive)
+  - `https://www.googleapis.com/auth/gmail.readonly` (**restricted**)
+- [ ] **P4** — Set the app's **Publishing status** to **In production**. Do **not** leave it in *Testing*: in Testing, refresh tokens expire after 7 days and the briefing silently dies every week. Unverified + In production works for up to 100 users behind a one-time "Google hasn't verified this app" interstitial.
+- [ ] **P5** — Generate the token-encryption key and add it to the cluster Secret:
+  ```bash
+  openssl rand -base64 32
+  kubectl -n chatty create secret generic chatty-auth \
+    --from-literal=GOOGLE_TOKEN_ENCRYPTION_KEY='<paste>' \
+    --dry-run=client -o yaml | kubectl -n chatty patch secret chatty-auth --patch-file=/dev/stdin
+  ```

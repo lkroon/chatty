@@ -60,7 +60,7 @@ kubectl --context "$CTX" create namespace chatty --dry-run=client -o yaml \
 # weight at best), and a dev DATABASE_URL sitting in a cluster Secret is a
 # misleading thing to leave lying around. BRAVE_SEARCH_API_KEY is optional:
 # only needed when app.searchProvider=brave with web search on.
-SECRET_KEYS=(OPENCODE_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET SESSION_SECRET BRAVE_SEARCH_API_KEY)
+SECRET_KEYS=(OPENCODE_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_TOKEN_ENCRYPTION_KEY SESSION_SECRET BRAVE_SEARCH_API_KEY)
 SECRET_ARGS=()
 for key in "${SECRET_KEYS[@]}"; do
   value=$(grep -E "^${key}=" .env | tail -n1 | cut -d= -f2-) || true
