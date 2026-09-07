@@ -51,14 +51,24 @@ export async function googleVerifyCallback(
 }
 
 export function createGoogleStrategy(pool: Pool): GoogleStrategy {
+  // Fail at boot rather than at the consent screen. Placeholder credentials
+  // are accepted by this constructor and only rejected by Google, as an
+  // "Error 401: invalid_client — The OAuth client was not found" page that
+  // says nothing about the env var behind it. Matches
+  // google/google-oauth.ts's requireCredentials(), and the boot-time
+  // strictness SEARCH_PROVIDER already has.
+  const clientID = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientID || !clientSecret) {
+    throw new Error(
+      'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set — login cannot work. ' +
+        'Local dev loads them from the repo-root .env; see README.',
+    );
+  }
   return new GoogleStrategy(
     {
-      // No live Google OAuth credentials exist for this project yet; the
-      // dev fallbacks below (mirroring main.ts's SESSION_SECRET pattern)
-      // just keep the app bootable without them. A real deployment must
-      // set GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/APP_ORIGIN.
-      clientID: process.env.GOOGLE_CLIENT_ID ?? 'dev-google-client-id',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? 'dev-google-client-secret',
+      clientID,
+      clientSecret,
       callbackURL: `${process.env.APP_ORIGIN ?? ''}/auth/google/callback`,
     },
     (_accessToken, _refreshToken, profile, done) => {

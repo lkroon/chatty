@@ -18,6 +18,14 @@ export interface OpencodeMessage {
 export interface OpencodeChatCompletionParams {
   model: string;
   messages: OpencodeMessage[];
+  /**
+   * Sent as the `x-opencode-session` header, which the upstream requires on
+   * every completion — without it the request is rejected 400
+   * `MissingSessionID`. Any stable non-empty string is accepted; callers pass
+   * the id of whatever conversation the round belongs to so the upstream can
+   * route a conversation's rounds together.
+   */
+  sessionId: string;
   /** Omitted entirely (not sent as an empty array) when tools shouldn't be offered this round. */
   tools?: ToolDefinition[];
   signal?: AbortSignal;
@@ -60,6 +68,13 @@ export class OpencodeUpstreamError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /**
+     * The upstream's own error body, truncated. Never reaches the browser —
+     * the chat stream sends a fixed string per status — but without it a
+     * status-only log makes an upstream contract change (a newly required
+     * header, say) undiagnosable from the outside.
+     */
+    public readonly body?: string,
   ) {
     super(message);
     this.name = 'OpencodeUpstreamError';

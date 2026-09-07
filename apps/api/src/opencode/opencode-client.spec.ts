@@ -57,6 +57,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         for await (const chunk of client.streamChatCompletion({
           model: 'glm-5.3',
           messages: [{ role: 'user', content: 'hi' }],
+          sessionId: 'session-1',
         })) {
           chunks.push(chunk);
           consumed[chunks.length - 1]?.resolve();
@@ -103,6 +104,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
       })) {
         chunks.push(chunk);
       }
@@ -128,6 +130,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         for await (const chunk of client.streamChatCompletion({
           model: 'glm-5.3',
           messages: [{ role: 'user', content: 'hi' }],
+          sessionId: 'session-1',
         })) {
           expect(chunk).toBeDefined();
         }
@@ -156,6 +159,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         for await (const chunk of client.streamChatCompletion({
           model: 'glm-5.3',
           messages: [{ role: 'user', content: 'hi' }],
+          sessionId: 'session-1',
         })) {
           expect(chunk).toBeDefined();
         }
@@ -189,6 +193,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
       })) {
         expect(chunk).toBeDefined();
       }
@@ -227,6 +232,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
         tools,
       })) {
         expect(chunk).toBeDefined();
@@ -234,6 +240,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
       })) {
         expect(chunk).toBeDefined();
       }
@@ -269,6 +276,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'search hacker news' }],
+        sessionId: 'session-1',
       })) {
         chunks.push(chunk);
       }
@@ -301,6 +309,7 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
       })) {
         chunks.push(chunk);
       }
@@ -333,12 +342,77 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       for await (const chunk of client.streamChatCompletion({
         model: 'glm-5.3',
         messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'session-1',
       })) {
         chunks.push(chunk);
       }
       expect(chunks).toEqual([
         { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: 0.0042 },
       ]);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('sends the session id as x-opencode-session and keeps the upstream error body', async () => {
+    // The upstream rejects a completion with no session header (400
+    // MissingSessionID), so the header is part of the request contract, and
+    // its body is the only place the reason is stated.
+    let seenHeader: string | undefined;
+    const fake = await startFakeUpstream((req, res) => {
+      seenHeader = req.headers['x-opencode-session'] as string | undefined;
+      if (!seenHeader) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { type: 'MissingSessionID' } }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      );
+      res.end();
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      for await (const chunk of client.streamChatCompletion({
+        model: 'glm-5.3',
+        messages: [{ role: 'user', content: 'hi' }],
+        sessionId: 'conversation-7',
+      })) {
+        expect(chunk).toBeDefined();
+      }
+      expect(seenHeader).toBe('conversation-7');
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('carries the upstream error body on OpencodeUpstreamError', async () => {
+    const fake = await startFakeUpstream((_req, res) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { type: 'MissingSessionID' } }));
+    });
+
+    try {
+      const client = new OpencodeClient(fake.baseUrl, 'k');
+      let caught: unknown;
+      try {
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'hi' }],
+          sessionId: 'conversation-7',
+        })) {
+          expect(chunk).toBeDefined();
+        }
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(OpencodeUpstreamError);
+      expect((caught as InstanceType<typeof OpencodeUpstreamError>).status).toBe(400);
+      expect((caught as InstanceType<typeof OpencodeUpstreamError>).body).toContain(
+        'MissingSessionID',
+      );
     } finally {
       await fake.close();
     }

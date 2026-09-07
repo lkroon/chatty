@@ -76,7 +76,7 @@ export class BriefingService {
     const mail = this.toSection<BriefingMail>(mailResult, 'Could not read your mail.', 'mail');
     const pending = this.toPending(pendingResult);
 
-    const summary = await this.summarize(model, date, timeZone, calendar, mail);
+    const summary = await this.summarize(accountId, model, date, timeZone, calendar, mail);
     return { date, timeZone, summary, calendar, mail, pending, generatedAt };
   }
 
@@ -109,6 +109,7 @@ export class BriefingService {
   }
 
   private async summarize(
+    accountId: number,
     model: string,
     date: string,
     timeZone: string,
@@ -145,6 +146,9 @@ export class BriefingService {
       // call from here would be an exfiltration channel.
       for await (const chunk of this.opencode.streamChatCompletion({
         model,
+        // Stable per account: every briefing an account asks for is the same
+        // upstream conversation, and it is never one of the chat sessions.
+        sessionId: `briefing-${accountId}`,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: payload },

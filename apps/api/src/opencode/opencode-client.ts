@@ -6,6 +6,9 @@ import {
   OpencodeUpstreamError,
 } from './opencode-client.types';
 
+/** Upstream error bodies are short; this only guards against a stray HTML page. */
+const MAX_ERROR_BODY_CHARS = 500;
+
 /** One streamed tool-call fragment, keyed by `index`, before reassembly. */
 interface ToolCallFragment {
   index: number;
@@ -33,7 +36,9 @@ interface ParsedFrame {
  * `OPENCODE_BASE_URL` defaults to `https://opencode.ai/zen/go/v1`;
  * `POST /chat/completions` is OpenAI-compatible chat-completions streaming,
  * and additionally accepts a top-level `tools` array in OpenAI
- * function-calling format. A completion signals its end **twice** — a
+ * function-calling format. Since 2026-09 it also *requires* an
+ * `x-opencode-session` header — every request without one is rejected 400
+ * `MissingSessionID`, whatever the model or payload. A completion signals its end **twice** — a
  * `finish_reason` frame, then a separate `data: [DONE]` frame — and a
  * trailing `{"choices":[],"cost":"…"}` frame can arrive **after**
  * `[DONE]`. This client reads the whole response body before yielding its
@@ -63,6 +68,7 @@ export class OpencodeClient {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
+        'x-opencode-session': params.sessionId,
       },
       body: JSON.stringify({
         model: params.model,
@@ -74,9 +80,13 @@ export class OpencodeClient {
     });
 
     if (!response.ok) {
+      // Read the body before throwing: it is the only place the upstream
+      // says *why*, and the response is discarded a line later.
+      const body = await OpencodeClient.readErrorBody(response);
       throw new OpencodeUpstreamError(
         response.status,
         `OpenCode upstream responded ${response.status}`,
+        body,
       );
     }
     if (!response.body) {
@@ -161,6 +171,17 @@ export class OpencodeClient {
     const toolCalls = OpencodeClient.buildAccumulatedToolCalls(toolCallFragments);
     const cost = costRaw === undefined ? null : OpencodeClient.parseCost(costRaw);
     yield { type: 'done', finishReason: finishReason ?? 'stop', toolCalls, cost };
+  }
+
+  private static async readErrorBody(response: Response): Promise<string | undefined> {
+    try {
+      const text = await response.text();
+      return text.length > MAX_ERROR_BODY_CHARS
+        ? `${text.slice(0, MAX_ERROR_BODY_CHARS)}…`
+        : text;
+    } catch {
+      return undefined;
+    }
   }
 
   private static parseCost(raw: string): number | null {

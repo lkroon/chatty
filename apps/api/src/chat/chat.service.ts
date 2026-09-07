@@ -169,6 +169,7 @@ export class ChatService {
         for await (const chunk of this.opencodeService.streamChatCompletion({
           model: body.model,
           messages,
+          sessionId: conversationId,
           tools: sendTools ? this.toolRuntime.definitions() : undefined,
           signal,
         })) {
@@ -263,6 +264,12 @@ export class ChatService {
       if (signal.aborted) {
         aborted = true;
       } else if (err instanceof OpencodeUpstreamError) {
+        // The user-facing message stays a fixed string per status; the
+        // upstream's own words go to the log, where they are the only clue
+        // to a 4xx that is about the request rather than the account.
+        this.logger.error(
+          `OpenCode upstream ${err.status}: ${err.body ?? '<no body>'}`,
+        );
         if (err.status === 429) {
           emit({
             type: 'error',

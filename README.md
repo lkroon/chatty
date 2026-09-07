@@ -35,7 +35,7 @@ npm install
 docker compose -f docker-compose.dev.yml up -d \
   && DATABASE_URL=postgresql://app:app@localhost:5432/appdb \
   npx ts-node apps/api/src/db/run-migrations.ts   # postgres + schema
-set -a && . .env && set +a && npm run dev   # api :3000, web :4200
+npm run dev   # loads .env itself; api :3000, web :4200
 ```
 
 Then open `http://localhost:4200`.
@@ -45,6 +45,12 @@ Then open `http://localhost:4200`.
 you're testing against a deployed environment. Add
 `http://localhost:4200/auth/google/callback` to the existing Google OAuth
 client's authorized redirect URIs for local development.
+
+`npm run dev` exports the repo-root `.env` before starting anything, so the
+api gets `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and the rest without a
+manual `set -a`. It refuses to boot when the Google credentials are missing —
+without that check the only symptom is Google's own
+"Error 401: invalid_client" page at the consent screen.
 
 `npm run dev` runs the api (`apps/api`, NestJS, port 3000 — fixed by
 convention, nothing else should bind it) and the Angular dev server
