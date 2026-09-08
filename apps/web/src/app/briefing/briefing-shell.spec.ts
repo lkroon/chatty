@@ -44,6 +44,7 @@ class StubApi implements BriefingApi {
   failBriefing = false;
   /** Consumed by the next getBriefing() call only, then resets itself. */
   failNextBriefing = false;
+  failCompleteTask = false;
   fullCalls = 0;
   itemCalls = 0;
   completed: string[] = [];
@@ -62,6 +63,9 @@ class StubApi implements BriefingApi {
     return of(items);
   }
   completeTask(id: string) {
+    if (this.failCompleteTask) {
+      return throwError(() => new Error('boom'));
+    }
     this.completed.push(id);
     return of(undefined);
   }
@@ -340,6 +344,108 @@ describe('BriefingShell', () => {
     const el = setup(api);
     (el.querySelector('[data-testid="complete-t1"]') as HTMLButtonElement).click();
     expect(api.completed).toEqual(['t1']);
+  });
+
+  it('dismisses a task locally, without calling the API', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+
+    (el.querySelector('[data-testid="dismiss-t1"]') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="dismiss-t1"]')).toBeNull();
+    expect(el.textContent).not.toContain('Renew passport');
+    expect(api.completed).toEqual([]);
+  });
+
+  it('shows an undo snackbar after dismissing a task, and undo brings the row back', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+
+    (el.querySelector('[data-testid="dismiss-t1"]') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+
+    const snackbar = el.querySelector('.snackbar');
+    expect(snackbar).toBeTruthy();
+    expect(snackbar?.textContent).toContain('Undo');
+
+    (el.querySelector('.snackbar__action') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="dismiss-t1"]')).toBeTruthy();
+    expect(el.textContent).toContain('Renew passport');
+  });
+
+  it('restores the task and shows a button-less error snackbar when completing fails', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.failCompleteTask = true;
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+
+    (el.querySelector('[data-testid="complete-t1"]') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+
+    // The optimistic hide is reverted: the row is back.
+    expect(el.querySelector('[data-testid="complete-t1"]')).toBeTruthy();
+    expect(el.textContent).toContain('Renew passport');
+
+    // An error toast is shown, but with no working action to tap.
+    const snackbar = el.querySelector('.snackbar');
+    expect(snackbar?.textContent).toContain('Could not complete that task.');
+    expect(el.querySelector('.snackbar__action')).toBeNull();
+  });
+
+  it('shows only the latest snackbar when a second action supersedes the first before the undo window elapses', () => {
+    // No fake-timer machinery (jasmine.clock() or similar) exists elsewhere
+    // in this spec file, and none is needed here: the assertions run well
+    // inside the real 6s undo window, so the second action's setTimeout
+    // simply replaces the first's synchronously, with no need to fast-forward
+    // or wait out any timer.
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't2', title: 'Pay invoice', due: '2026-09-05', overdue: false, notes: null },
+        ],
+      },
+    };
+    const el = setup(api);
+
+    (el.querySelector('[data-testid="dismiss-t1"]') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+    (el.querySelector('[data-testid="dismiss-t2"]') as HTMLButtonElement).click();
+    currentFixture.detectChanges();
+
+    const snackbars = el.querySelectorAll('.snackbar');
+    expect(snackbars.length).toBe(1);
+    expect(snackbars[0].textContent).toContain('Task hidden from Today.');
   });
 
   it('renders the mail sender and snippet on their own lines', () => {

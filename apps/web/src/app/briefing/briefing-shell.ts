@@ -196,7 +196,9 @@ const UNDO_WINDOW_MS = 6000;
       @if (undo(); as u) {
         <div class="snackbar" role="status">
           <span>{{ u.label }}</span>
-          <button type="button" class="snackbar__action" (click)="undoLast()">Undo</button>
+          @if (u.restore) {
+            <button type="button" class="snackbar__action" (click)="undoLast()">Undo</button>
+          }
         </div>
       }
     </div>
@@ -252,7 +254,6 @@ const UNDO_WINDOW_MS = 6000;
     .row { display: flex; gap: 0.6rem; padding: 0.35rem 0; align-items: baseline; }
     .row__time { flex-shrink: 0; font-weight: 700; font-size: 0.82rem; color: var(--oc-accent-ink, #7a2c22); }
     .row__title { flex: 1; min-width: 0; }
-    .row__from { font-size: 0.78rem; color: var(--oc-text-muted, #6f7a76); }
     .hint { margin: 0; color: var(--oc-text-muted, #6f7a76); }
     .connect {
       display: inline-flex; justify-content: center; width: 100%;
@@ -399,6 +400,7 @@ export class BriefingShell {
       window.removeEventListener('focus', onWake);
       clearInterval(timer);
     });
+    this.destroyRef.onDestroy(() => this.clearUndo());
   }
 
   /**
@@ -493,7 +495,7 @@ export class BriefingShell {
     return section.items.filter((task) => !hidden.has(task.id));
   });
 
-  protected readonly undo = signal<{ label: string; restore: () => void } | null>(null);
+  protected readonly undo = signal<{ label: string; restore: (() => void) | null } | null>(null);
   private undoTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
@@ -504,12 +506,12 @@ export class BriefingShell {
    */
   protected completeTask(id: string): void {
     this.hideTask(id, 'Task completed.', () => this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)));
-    this.api.completeTask(id).subscribe({
+    this.api.completeTask(id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.refresh(false),
       error: () => {
         this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id));
         this.persist();
-        this.showUndo('Could not complete that task.', () => undefined);
+        this.showUndo('Could not complete that task.', null);
       },
     });
   }
@@ -524,8 +526,10 @@ export class BriefingShell {
   protected undoLast(): void {
     const current = this.undo();
     this.clearUndo();
-    current?.restore();
-    this.persist();
+    if (current?.restore) {
+      current.restore();
+      this.persist();
+    }
   }
 
   private hideTask(id: string, label: string, restore: () => void): void {
@@ -534,11 +538,10 @@ export class BriefingShell {
     this.showUndo(label, restore);
   }
 
-  private showUndo(label: string, restore: () => void): void {
+  private showUndo(label: string, restore: (() => void) | null): void {
     this.clearUndo();
     this.undo.set({ label, restore });
     this.undoTimer = setTimeout(() => this.undo.set(null), UNDO_WINDOW_MS);
-    this.destroyRef.onDestroy(() => this.clearUndo());
   }
 
   private clearUndo(): void {
