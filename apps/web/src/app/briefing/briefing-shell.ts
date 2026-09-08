@@ -1,12 +1,20 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 
+import {
+  itemFingerprint,
+  readBriefingCache,
+  writeBriefingCache,
+} from '../core/briefing-cache';
 import { renderMarkdownToHtml } from '../core/markdown';
 import { ChattyLogo } from '../shared/chatty-logo';
 import { TodayChatSwitch } from '../shared/today-chat-switch';
 import { BRIEFING_API } from './briefing-api';
 import { RealBriefingApi } from './real-briefing-api';
+
+/** Foreground revalidation cadence. Mail and calendar move in minutes, not seconds. */
+const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 /**
  * The daily overview, and the app's landing route. Sized to the visible
@@ -28,13 +36,23 @@ import { RealBriefingApi } from './real-briefing-api';
       <header class="topbar">
         <span class="brand"><app-chatty-logo [size]="26" /></span>
         <app-today-chat-switch active="today" [pendingCount]="pendingCount()" />
+        <button
+          type="button"
+          class="refresh"
+          data-testid="refresh"
+          [disabled]="refreshing()"
+          (click)="refresh(true)"
+          aria-label="Refresh"
+        >
+          {{ refreshing() ? '…' : '↻' }}
+        </button>
       </header>
 
       <main class="body">
         @if (loading()) {
           <p class="hint">Loading your briefing…</p>
         } @else if (failed()) {
-          <p class="hint">Couldn't load your briefing. Pull down to try again.</p>
+          <p class="hint">Couldn't load your briefing. Tap ↻ to try again.</p>
         } @else if (briefing(); as b) {
           @if (b.calendar.status === 'not_connected') {
             <!--
@@ -151,6 +169,18 @@ import { RealBriefingApi } from './real-briefing-api';
     .brand {
       display: flex; align-items: center; flex-shrink: 0;
     }
+    .refresh {
+      flex-shrink: 0;
+      margin-left: auto;
+      width: 44px; height: 44px;
+      border-radius: 999px;
+      border: 1px solid var(--oc-border, #dcece4);
+      background: var(--oc-surface, #fff);
+      color: var(--oc-accent-ink, #7a2c22);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .refresh:disabled { opacity: 0.5; cursor: default; }
     .body {
       flex: 1; min-height: 0; overflow-y: auto;
       padding: 1rem;
@@ -231,22 +261,133 @@ import { RealBriefingApi } from './real-briefing-api';
 export class BriefingShell {
   private readonly api = inject(BRIEFING_API);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly briefing = signal<Briefing | null>(null);
   protected readonly loading = signal(true);
   protected readonly failed = signal(false);
+  protected readonly refreshing = signal(false);
   protected readonly pendingCount = computed(() => this.briefing()?.pending.length ?? 0);
 
+  /** Ids the user dismissed from Today. Local only — see briefing-cache.ts. */
+  protected readonly dismissedTaskIds = signal<string[]>([]);
+
+  /** The fingerprint the current summary was written for. */
+  private summaryFingerprint = '';
+
   constructor() {
-    this.api.getBriefing().subscribe({
-      next: (briefing) => {
-        this.briefing.set(briefing);
+    const today = todayIsoInLocalZone();
+    const cached = readBriefingCache(today);
+
+    if (cached) {
+      this.briefing.set({ ...cached.items, summary: cached.summary });
+      this.summaryFingerprint = cached.summaryFingerprint;
+      this.dismissedTaskIds.set(cached.dismissedTaskIds);
+      this.loading.set(false);
+      // Warm: the screen is already painted, so catch up on items alone.
+      this.refresh(false);
+    } else {
+      this.refresh(true);
+    }
+
+    // Timers are throttled in a background tab and an installed iOS PWA is
+    // suspended outright, so the interval alone would not fire. Focus and
+    // visibility are what actually deliver a fresh Today on a phone.
+    const onWake = () => {
+      if (document.visibilityState === 'visible') {
+        this.refresh(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('focus', onWake);
+    const timer = setInterval(onWake, REVALIDATE_INTERVAL_MS);
+
+    this.destroyRef.onDestroy(() => {
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('focus', onWake);
+      clearInterval(timer);
+    });
+  }
+
+  /**
+   * `full` = the user asked. Items are always refetched; the summary is
+   * regenerated only on an explicit refresh AND only when the item set
+   * actually changed, because that is the one call that costs a model.
+   */
+  protected refresh(full: boolean): void {
+    if (this.refreshing()) {
+      return;
+    }
+    this.refreshing.set(true);
+
+    if (full && !this.briefing()) {
+      this.api.getBriefing().subscribe({
+        next: (briefing) => {
+          const { summary, ...items } = briefing;
+          this.summaryFingerprint = itemFingerprint(items);
+          this.briefing.set(briefing);
+          this.loading.set(false);
+          this.failed.set(false);
+          this.refreshing.set(false);
+          this.persist();
+        },
+        error: () => {
+          this.failed.set(true);
+          this.loading.set(false);
+          this.refreshing.set(false);
+        },
+      });
+      return;
+    }
+
+    this.api.getBriefingItems().subscribe({
+      next: (items) => {
+        const fingerprint = itemFingerprint(items);
+        const staleSummary = full && fingerprint !== this.summaryFingerprint;
+        // Silent swap: no badge, no confirmation. Nothing is lost by simply
+        // showing the newer data.
+        this.briefing.set({ ...items, summary: this.briefing()?.summary ?? '' });
         this.loading.set(false);
+        this.failed.set(false);
+        this.persist();
+
+        if (!staleSummary) {
+          this.refreshing.set(false);
+          return;
+        }
+        this.api.getBriefing().subscribe({
+          next: (briefing) => {
+            const { summary, ...fresh } = briefing;
+            this.summaryFingerprint = itemFingerprint(fresh);
+            this.briefing.set(briefing);
+            this.refreshing.set(false);
+            this.persist();
+          },
+          error: () => this.refreshing.set(false),
+        });
       },
       error: () => {
-        this.failed.set(true);
+        if (!this.briefing()) {
+          this.failed.set(true);
+        }
         this.loading.set(false);
+        this.refreshing.set(false);
       },
+    });
+  }
+
+  private persist(): void {
+    const current = this.briefing();
+    if (!current) {
+      return;
+    }
+    const { summary, ...items } = current;
+    writeBriefingCache({
+      items,
+      summary,
+      summaryFingerprint: this.summaryFingerprint,
+      dismissedTaskIds: this.dismissedTaskIds(),
+      cachedAt: Date.now(),
     });
   }
 
@@ -285,4 +426,17 @@ export class BriefingShell {
     const match = /T(\d{2}:\d{2})/.exec(iso);
     return match ? match[1] : '';
   }
+}
+
+/**
+ * Today's date as the browser sees it, only ever used to decide whether a
+ * cached briefing is from another day. The authoritative date is the one the
+ * server put on the payload, in BRIEFING_TIMEZONE.
+ */
+function todayIsoInLocalZone(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }

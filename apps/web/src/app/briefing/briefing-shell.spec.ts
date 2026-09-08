@@ -6,9 +6,23 @@ import type { Briefing, GoogleConnectionStatus } from '@contracts';
 
 import { BRIEFING_API, BriefingApi } from './briefing-api';
 import { BriefingShell } from './briefing-shell';
+import {
+  BRIEFING_CACHE_KEY,
+  itemFingerprint,
+  writeBriefingCache,
+} from '../core/briefing-cache';
+
+// The briefing cache keys on `date` and rejects anything not from "today"
+// (see readBriefingCache in core/briefing-cache.ts), so the fixture's date
+// must track the real calendar day rather than a fixed string.
+const TODAY_ISO = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
 
 const CONNECTED: Briefing = {
-  date: '2026-09-05',
+  date: TODAY_ISO,
   timeZone: 'Europe/Amsterdam',
   summary: 'A quiet day.',
   calendar: {
@@ -28,14 +42,21 @@ class StubApi implements BriefingApi {
   briefing: Briefing = CONNECTED;
   status: GoogleConnectionStatus = { connected: true, scopes: [] };
   failBriefing = false;
+  fullCalls = 0;
+  itemCalls = 0;
+  completed: string[] = [];
+
   getBriefing() {
+    this.fullCalls++;
     return this.failBriefing ? throwError(() => new Error('boom')) : of(this.briefing);
   }
   getBriefingItems() {
+    this.itemCalls++;
     const { summary, ...items } = this.briefing;
     return of(items);
   }
-  completeTask() {
+  completeTask(id: string) {
+    this.completed.push(id);
     return of(undefined);
   }
   getGoogleStatus() {
@@ -69,6 +90,14 @@ function setup(api: StubApi): HTMLElement {
 }
 
 describe('BriefingShell', () => {
+  // Every persisted briefing now keys on "today", which the fixture's date
+  // deliberately tracks (see TODAY_ISO above) — so a successful test's
+  // persist() call leaves a real, valid cache entry in localStorage for the
+  // next test to inherit unless each test starts from a clean slate.
+  beforeEach(() => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
   it('renders the summary and both sections', () => {
     const el = setup(new StubApi());
     expect(el.textContent).toContain('A quiet day.');
@@ -141,5 +170,36 @@ describe('BriefingShell', () => {
     expect(el.textContent).toContain('Lunch on Thursday?');
     // A pointer, not a control: Today never confirms.
     expect(el.querySelector('.proposal__confirm')).toBeNull();
+  });
+
+  it('fetches the full briefing on a cold load', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    setup(api);
+    expect(api.fullCalls).toBe(1);
+    expect(api.itemCalls).toBe(0);
+  });
+
+  it('paints from a warm cache and revalidates items only', () => {
+    const { summary, ...items } = CONNECTED;
+    writeBriefingCache({
+      items,
+      summary: 'Cached summary.',
+      summaryFingerprint: itemFingerprint(items),
+      dismissedTaskIds: [],
+      cachedAt: Date.now(),
+    });
+    const api = new StubApi();
+    const el = setup(api);
+    expect(el.textContent).toContain('Cached summary.');
+    expect(api.fullCalls).toBe(0);
+    expect(api.itemCalls).toBe(1);
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
+  it('renders a refresh control', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const el = setup(new StubApi());
+    expect(el.querySelector('[data-testid="refresh"]')).toBeTruthy();
   });
 });
