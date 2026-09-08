@@ -4,6 +4,11 @@ import type { BriefingMail } from '@contracts/briefing';
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
 const MAX_MESSAGES = 10;
 const MAX_SNIPPET_CHARS = 200;
+/**
+ * How far back "unread" reaches. A one-day window silently drops anything
+ * you did not read yesterday; a week is what a person means by their inbox.
+ */
+const UNREAD_WINDOW_DAYS = 7;
 
 const logger = new Logger('GmailSource');
 
@@ -21,6 +26,12 @@ function header(message: GmailMessage, name: string): string | null {
   return found?.value ?? null;
 }
 
+export interface RecentMail {
+  items: BriefingMail[];
+  /** True when the window held more messages than `items` carries. */
+  hasMore: boolean;
+}
+
 /**
  * Recent unread mail, as metadata plus Google's own snippet.
  *
@@ -30,12 +41,14 @@ function header(message: GmailMessage, name: string): string | null {
  * snippet is short and still untrusted, so briefing.service.ts frames the
  * whole section as untrusted data before it goes upstream.
  */
-export async function fetchRecentMail(accessToken: string): Promise<BriefingMail[]> {
+export async function fetchRecentMail(accessToken: string): Promise<RecentMail> {
   const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' };
 
   const listParams = new URLSearchParams({
-    q: 'is:unread newer_than:1d',
-    maxResults: String(MAX_MESSAGES),
+    q: `is:unread newer_than:${UNREAD_WINDOW_DAYS}d`,
+    // One more than the cap, so overflow is detectable without a second call
+    // and without trusting Gmail's resultSizeEstimate.
+    maxResults: String(MAX_MESSAGES + 1),
   });
   const listResponse = await fetch(`${GMAIL_BASE}?${listParams.toString()}`, { headers });
   if (!listResponse.ok) {
@@ -44,8 +57,11 @@ export async function fetchRecentMail(accessToken: string): Promise<BriefingMail
   const list = (await listResponse.json()) as { messages?: { id?: string }[] };
   const ids = (list.messages ?? []).map((m) => m.id).filter((id): id is string => !!id);
 
+  const hasMore = ids.length > MAX_MESSAGES;
+  const capped = ids.slice(0, MAX_MESSAGES);
+
   const settled = await Promise.all(
-    ids.map(async (id): Promise<BriefingMail | null> => {
+    capped.map(async (id): Promise<BriefingMail | null> => {
       const getParams = new URLSearchParams({ format: 'metadata' });
       getParams.append('metadataHeaders', 'From');
       getParams.append('metadataHeaders', 'Subject');
@@ -71,5 +87,5 @@ export async function fetchRecentMail(accessToken: string): Promise<BriefingMail
     }),
   );
 
-  return settled.filter((m): m is BriefingMail => m !== null);
+  return { items: settled.filter((m): m is BriefingMail => m !== null), hasMore };
 }
