@@ -147,4 +147,24 @@ describe('fetchRecentMail', () => {
     expect(result.items.length).toBe(10);
     expect(result.hasMore).toBe(true);
   });
+
+  it('does not report hasMore when the window lands exactly at the cap', async () => {
+    // Exactly 10 ids come back; MAX_MESSAGES is 10.
+    const ids = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}` }));
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('?q=') || url.includes('&q=')) {
+        return Promise.resolve(new Response(JSON.stringify({ messages: ids }), { status: 200 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ id: 'x', snippet: 's', internalDate: '0', payload: { headers: [] } }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await fetchRecentMail('at');
+    expect(result.items.length).toBe(10);
+    expect(result.hasMore).toBe(false);
+  });
 });
