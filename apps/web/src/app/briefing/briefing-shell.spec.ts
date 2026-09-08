@@ -42,12 +42,18 @@ class StubApi implements BriefingApi {
   briefing: Briefing = CONNECTED;
   status: GoogleConnectionStatus = { connected: true, scopes: [] };
   failBriefing = false;
+  /** Consumed by the next getBriefing() call only, then resets itself. */
+  failNextBriefing = false;
   fullCalls = 0;
   itemCalls = 0;
   completed: string[] = [];
 
   getBriefing() {
     this.fullCalls++;
+    if (this.failNextBriefing) {
+      this.failNextBriefing = false;
+      return throwError(() => new Error('boom'));
+    }
     return this.failBriefing ? throwError(() => new Error('boom')) : of(this.briefing);
   }
   getBriefingItems() {
@@ -76,6 +82,11 @@ class StubApi implements BriefingApi {
  * would hit the real backend over `fetch`. chat-shell.spec.ts:68 overrides CHAT_API the same way,
  * for the same reason.
  */
+// Stashed by setup() so tests that need to act after the initial render (a
+// click, then re-reading the DOM) can call detectChanges() again without
+// changing setup()'s return type for every existing call site.
+let currentFixture: ReturnType<typeof TestBed.createComponent<BriefingShell>>;
+
 function setup(api: StubApi): HTMLElement {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -86,6 +97,7 @@ function setup(api: StubApi): HTMLElement {
   });
   const fixture = TestBed.createComponent(BriefingShell);
   fixture.detectChanges();
+  currentFixture = fixture;
   return fixture.nativeElement as HTMLElement;
 }
 
@@ -201,5 +213,102 @@ describe('BriefingShell', () => {
     localStorage.removeItem(BRIEFING_CACHE_KEY);
     const el = setup(new StubApi());
     expect(el.querySelector('[data-testid="refresh"]')).toBeTruthy();
+  });
+
+  it('skips regenerating the summary on a full refresh when the item fingerprint still matches', () => {
+    const { summary, ...items } = CONNECTED;
+    writeBriefingCache({
+      items,
+      summary: 'Cached summary.',
+      summaryFingerprint: itemFingerprint(items),
+      dismissedTaskIds: [],
+      cachedAt: Date.now(),
+    });
+    const api = new StubApi();
+    const el = setup(api);
+    expect(api.fullCalls).toBe(0);
+
+    el.querySelector<HTMLButtonElement>('[data-testid="refresh"]')!.click();
+    currentFixture.detectChanges();
+
+    // The item set (and therefore its fingerprint) hasn't changed, so the
+    // inner getBriefing() re-fetch that would regenerate the summary is
+    // skipped entirely.
+    expect(api.fullCalls).toBe(0);
+    expect(el.textContent).toContain('Cached summary.');
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
+  it('regenerates the summary on a full refresh when the item fingerprint changed', () => {
+    const { summary, ...items } = CONNECTED;
+    writeBriefingCache({
+      items,
+      summary: 'Cached summary.',
+      summaryFingerprint: itemFingerprint(items),
+      dismissedTaskIds: [],
+      cachedAt: Date.now(),
+    });
+    const api = new StubApi();
+    const el = setup(api);
+    expect(api.fullCalls).toBe(0);
+
+    api.briefing = {
+      ...CONNECTED,
+      summary: 'Fresh summary.',
+      calendar: {
+        status: 'ok' as const,
+        items: [
+          { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
+          { id: 'e2', title: 'Follow-up', start: '2026-09-05T11:00:00+02:00', end: null, allDay: false, location: null },
+        ],
+      },
+    };
+
+    el.querySelector<HTMLButtonElement>('[data-testid="refresh"]')!.click();
+    currentFixture.detectChanges();
+
+    // The item set changed, so the inner getBriefing() fires exactly once
+    // to fetch the regenerated summary, and it ends up on screen.
+    expect(api.fullCalls).toBe(1);
+    expect(el.textContent).toContain('Fresh summary.');
+    expect(el.textContent).toContain('Follow-up');
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
+  it('keeps the freshly swapped-in items and clears refreshing when the inner summary regeneration fails', () => {
+    const { summary, ...items } = CONNECTED;
+    writeBriefingCache({
+      items,
+      summary: 'Cached summary.',
+      summaryFingerprint: itemFingerprint(items),
+      dismissedTaskIds: [],
+      cachedAt: Date.now(),
+    });
+    const api = new StubApi();
+    const el = setup(api);
+
+    api.briefing = {
+      ...CONNECTED,
+      calendar: {
+        status: 'ok' as const,
+        items: [
+          { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
+          { id: 'e2', title: 'Follow-up', start: '2026-09-05T11:00:00+02:00', end: null, allDay: false, location: null },
+        ],
+      },
+    };
+    api.failNextBriefing = true;
+
+    el.querySelector<HTMLButtonElement>('[data-testid="refresh"]')!.click();
+    currentFixture.detectChanges();
+
+    // The failing inner call must not crash the component, must not get the
+    // refresh control stuck disabled, and must not wipe the items that
+    // getBriefingItems() already swapped in.
+    const button = el.querySelector<HTMLButtonElement>('[data-testid="refresh"]')!;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent?.trim()).toBe('↻');
+    expect(el.textContent).toContain('Follow-up');
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
   });
 });

@@ -1,4 +1,5 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 
@@ -321,7 +322,7 @@ export class BriefingShell {
     this.refreshing.set(true);
 
     if (full && !this.briefing()) {
-      this.api.getBriefing().subscribe({
+      this.api.getBriefing().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: (briefing) => {
           const { summary, ...items } = briefing;
           this.summaryFingerprint = itemFingerprint(items);
@@ -340,7 +341,7 @@ export class BriefingShell {
       return;
     }
 
-    this.api.getBriefingItems().subscribe({
+    this.api.getBriefingItems().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (items) => {
         const fingerprint = itemFingerprint(items);
         const staleSummary = full && fingerprint !== this.summaryFingerprint;
@@ -355,7 +356,7 @@ export class BriefingShell {
           this.refreshing.set(false);
           return;
         }
-        this.api.getBriefing().subscribe({
+        this.api.getBriefing().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
           next: (briefing) => {
             const { summary, ...fresh } = briefing;
             this.summaryFingerprint = itemFingerprint(fresh);
