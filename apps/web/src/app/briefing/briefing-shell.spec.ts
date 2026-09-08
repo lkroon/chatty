@@ -17,7 +17,9 @@ const CONNECTED: Briefing = {
       { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
     ],
   },
+  tasks: { status: 'ok', items: [] },
   mail: { status: 'ok', items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }] },
+  mailHasMore: false,
   pending: [],
   generatedAt: '2026-09-05T06:00:00.000Z',
 };
