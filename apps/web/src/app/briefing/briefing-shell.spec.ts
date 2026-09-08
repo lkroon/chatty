@@ -31,6 +31,13 @@ class StubApi implements BriefingApi {
   getBriefing() {
     return this.failBriefing ? throwError(() => new Error('boom')) : of(this.briefing);
   }
+  getBriefingItems() {
+    const { summary, ...items } = this.briefing;
+    return of(items);
+  }
+  completeTask() {
+    return of(undefined);
+  }
   getGoogleStatus() {
     return of(this.status);
   }

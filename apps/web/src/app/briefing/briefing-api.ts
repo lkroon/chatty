@@ -1,10 +1,15 @@
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
-import type { Briefing, GoogleConnectionStatus } from '@contracts';
+import type { Briefing, BriefingItems, GoogleConnectionStatus } from '@contracts';
 
 /** Everything the Today screen needs from the backend. */
 export interface BriefingApi {
+  /** Items plus the model-written summary. Costs a model call — Refresh only. */
   getBriefing(): Observable<Briefing>;
+  /** Items only. The polling path; safe to call on every focus. */
+  getBriefingItems(): Observable<BriefingItems>;
+  /** Marks one Google task complete. Idempotent. */
+  completeTask(id: string): Observable<void>;
   getGoogleStatus(): Observable<GoogleConnectionStatus>;
   disconnectGoogle(): Observable<void>;
 }
