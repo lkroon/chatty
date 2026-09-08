@@ -8,14 +8,18 @@ describe('fetchRecentMail', () => {
 
   function routeFetch(handler: (url: string) => unknown): jest.Mock {
     const mock = jest.fn((url: string) =>
-      Promise.resolve(new Response(JSON.stringify(handler(url)), { status: 200 })),
+      Promise.resolve(
+        new Response(JSON.stringify(handler(url)), { status: 200 }),
+      ),
     );
     global.fetch = mock as unknown as typeof fetch;
     return mock;
   }
 
   function respondWith(body: unknown, status = 200): jest.Mock {
-    const mock = jest.fn().mockResolvedValue(new Response(JSON.stringify(body), { status }));
+    const mock = jest
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(body), { status }));
     global.fetch = mock as unknown as typeof fetch;
     return mock;
   }
@@ -33,7 +37,9 @@ describe('fetchRecentMail', () => {
   };
 
   it('lists unread mail from the last seven days and fetches metadata only', async () => {
-    const mock = routeFetch((url) => (url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] }));
+    const mock = routeFetch((url) =>
+      url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] },
+    );
     await fetchRecentMail('at-1');
 
     const listUrl = new URL(mock.mock.calls[0][0] as string);
@@ -41,11 +47,16 @@ describe('fetchRecentMail', () => {
 
     const getUrl = new URL(mock.mock.calls[1][0] as string);
     expect(getUrl.searchParams.get('format')).toBe('metadata');
-    expect(getUrl.searchParams.getAll('metadataHeaders')).toEqual(['From', 'Subject']);
+    expect(getUrl.searchParams.getAll('metadataHeaders')).toEqual([
+      'From',
+      'Subject',
+    ]);
   });
 
   it('maps a message to from/subject/snippet', async () => {
-    routeFetch((url) => (url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] }));
+    routeFetch((url) =>
+      url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] },
+    );
     const result = await fetchRecentMail('at');
     expect(result.items).toEqual([
       {
@@ -93,10 +104,15 @@ describe('fetchRecentMail', () => {
         return Promise.resolve(new Response('{}', { status: 500 }));
       }
       if (url.includes('/messages/m1')) {
-        return Promise.resolve(new Response(JSON.stringify(messageBody), { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify(messageBody), { status: 200 }),
+        );
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ messages: [{ id: 'm1' }, { id: 'm2' }] }), { status: 200 }),
+        new Response(
+          JSON.stringify({ messages: [{ id: 'm1' }, { id: 'm2' }] }),
+          { status: 200 },
+        ),
       );
     }) as unknown as typeof fetch;
 
@@ -109,7 +125,9 @@ describe('fetchRecentMail', () => {
       Promise.resolve(
         url.includes('/messages/m1')
           ? new Response('<html>not json</html>', { status: 200 })
-          : new Response(JSON.stringify({ messages: [{ id: 'm1' }] }), { status: 200 }),
+          : new Response(JSON.stringify({ messages: [{ id: 'm1' }] }), {
+              status: 200,
+            }),
       ),
     ) as unknown as typeof fetch;
     const result = await fetchRecentMail('at');
@@ -117,8 +135,14 @@ describe('fetchRecentMail', () => {
   });
 
   it('throws when the list call itself fails', async () => {
-    global.fetch = jest.fn().mockResolvedValue(new Response('{}', { status: 401 })) as unknown as typeof fetch;
-    await expect(fetchRecentMail('at')).rejects.toThrow(/Gmail request failed \(401\)/);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        new Response('{}', { status: 401 }),
+      ) as unknown as typeof fetch;
+    await expect(fetchRecentMail('at')).rejects.toThrow(
+      /Gmail request failed \(401\)/,
+    );
   });
 
   it('queries a seven-day unread window', async () => {
@@ -133,11 +157,18 @@ describe('fetchRecentMail', () => {
     const ids = Array.from({ length: 11 }, (_, i) => ({ id: `m${i}` }));
     global.fetch = jest.fn().mockImplementation((url: string) => {
       if (url.includes('?q=') || url.includes('&q=')) {
-        return Promise.resolve(new Response(JSON.stringify({ messages: ids }), { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: ids }), { status: 200 }),
+        );
       }
       return Promise.resolve(
         new Response(
-          JSON.stringify({ id: 'x', snippet: 's', internalDate: '0', payload: { headers: [] } }),
+          JSON.stringify({
+            id: 'x',
+            snippet: 's',
+            internalDate: '0',
+            payload: { headers: [] },
+          }),
           { status: 200 },
         ),
       );
@@ -153,11 +184,18 @@ describe('fetchRecentMail', () => {
     const ids = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}` }));
     global.fetch = jest.fn().mockImplementation((url: string) => {
       if (url.includes('?q=') || url.includes('&q=')) {
-        return Promise.resolve(new Response(JSON.stringify({ messages: ids }), { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: ids }), { status: 200 }),
+        );
       }
       return Promise.resolve(
         new Response(
-          JSON.stringify({ id: 'x', snippet: 's', internalDate: '0', payload: { headers: [] } }),
+          JSON.stringify({
+            id: 'x',
+            snippet: 's',
+            internalDate: '0',
+            payload: { headers: [] },
+          }),
           { status: 200 },
         ),
       );

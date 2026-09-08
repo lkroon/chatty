@@ -81,12 +81,13 @@ export class BriefingService {
 
     // Four fetches, one round trip. Proposals join the same allSettled so a
     // slow or broken proposals query costs the page nothing.
-    const [calendarResult, mailResult, tasksResult, pendingResult] = await Promise.allSettled([
-      this.fetchEvents(accessToken, date, timeZone),
-      this.fetchMail(accessToken),
-      this.fetchTasks(accessToken, date),
-      this.proposals.pendingForAccount(accountId),
-    ]);
+    const [calendarResult, mailResult, tasksResult, pendingResult] =
+      await Promise.allSettled([
+        this.fetchEvents(accessToken, date, timeZone),
+        this.fetchMail(accessToken),
+        this.fetchTasks(accessToken, date),
+        this.proposals.pendingForAccount(accountId),
+      ]);
 
     const calendar = this.toSection<BriefingEvent>(
       calendarResult,
@@ -107,10 +108,20 @@ export class BriefingService {
       'Could not read your mail.',
       'mail',
     );
-    const mailHasMore = mailResult.status === 'fulfilled' && mailResult.value.hasMore;
+    const mailHasMore =
+      mailResult.status === 'fulfilled' && mailResult.value.hasMore;
     const pending = this.toPending(pendingResult);
 
-    return { date, timeZone, calendar, tasks, mail, mailHasMore, pending, generatedAt };
+    return {
+      date,
+      timeZone,
+      calendar,
+      tasks,
+      mail,
+      mailHasMore,
+      pending,
+      generatedAt,
+    };
   }
 
   /** The items plus the model-written summary. The expensive path. */
@@ -134,11 +145,15 @@ export class BriefingService {
    * user, and inventing a third rendering for a list that is empty 99% of the
    * time is not worth it. The failure is logged, not shown.
    */
-  private toPending(result: PromiseSettledResult<ProposalCard[]>): ProposalCard[] {
+  private toPending(
+    result: PromiseSettledResult<ProposalCard[]>,
+  ): ProposalCard[] {
     if (result.status === 'fulfilled') {
       return result.value;
     }
-    this.logger.warn(`briefing pending section failed: ${(result.reason as Error)?.message}`);
+    this.logger.warn(
+      `briefing pending section failed: ${(result.reason as Error)?.message}`,
+    );
     return [];
   }
 
@@ -152,7 +167,9 @@ export class BriefingService {
     }
     // Log the reason, return a fixed string: an upstream error message can
     // carry account detail and this one goes to the browser.
-    this.logger.warn(`briefing ${label} section failed: ${(result.reason as Error)?.message}`);
+    this.logger.warn(
+      `briefing ${label} section failed: ${(result.reason as Error)?.message}`,
+    );
     return { status: 'error', message };
   }
 
@@ -211,7 +228,9 @@ export class BriefingService {
       }
       return text.trim();
     } catch (err) {
-      this.logger.warn(`briefing summarization failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `briefing summarization failed: ${(err as Error).message}`,
+      );
       return '';
     }
   }

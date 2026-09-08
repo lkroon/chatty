@@ -3,7 +3,9 @@ import { BriefingService } from './briefing.service';
 import { NotConnectedError } from '../google/errors';
 import type { OpencodeStreamChunk } from '../opencode/opencode-client.types';
 
-function stream(chunks: OpencodeStreamChunk[]): AsyncGenerator<OpencodeStreamChunk> {
+function stream(
+  chunks: OpencodeStreamChunk[],
+): AsyncGenerator<OpencodeStreamChunk> {
   return (async function* () {
     for (const chunk of chunks) {
       yield chunk;
@@ -56,18 +58,41 @@ describe('BriefingService', () => {
         ] as OpencodeStreamChunk[]),
       ),
     };
-    calendar = jest.fn().mockResolvedValue([
-      { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
-    ]);
+    calendar = jest
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 'e1',
+          title: 'Standup',
+          start: '2026-09-05T09:00:00+02:00',
+          end: null,
+          allDay: false,
+          location: null,
+        },
+      ]);
     gmail = jest.fn().mockResolvedValue({
       items: [
-        { id: 'm1', from: 'a@b.c', subject: 'Hi', snippet: 's', receivedAt: '2026-09-05T07:00:00.000Z' },
+        {
+          id: 'm1',
+          from: 'a@b.c',
+          subject: 'Hi',
+          snippet: 's',
+          receivedAt: '2026-09-05T07:00:00.000Z',
+        },
       ],
       hasMore: false,
     });
-    tasksFetcher = jest.fn().mockResolvedValue([
-      { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
-    ]);
+    tasksFetcher = jest
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 't1',
+          title: 'Renew passport',
+          due: '2026-09-05',
+          overdue: false,
+          notes: null,
+        },
+      ]);
     proposals = new FakeProposals();
     service = new BriefingService(
       tokens as never,
@@ -81,8 +106,14 @@ describe('BriefingService', () => {
 
   it('returns both sections and the summary', async () => {
     const briefing = await service.build(1, 'glm-5.3-flash');
-    expect(briefing.calendar).toEqual({ status: 'ok', items: [expect.objectContaining({ id: 'e1' })] });
-    expect(briefing.mail).toEqual({ status: 'ok', items: [expect.objectContaining({ id: 'm1' })] });
+    expect(briefing.calendar).toEqual({
+      status: 'ok',
+      items: [expect.objectContaining({ id: 'e1' })],
+    });
+    expect(briefing.mail).toEqual({
+      status: 'ok',
+      items: [expect.objectContaining({ id: 'm1' })],
+    });
     expect(briefing.summary).toBe('Busy morning.');
     expect(briefing.timeZone).toBe('Europe/Amsterdam');
   });
@@ -96,7 +127,9 @@ describe('BriefingService', () => {
   it('frames the fetched data as untrusted in the prompt', async () => {
     await service.build(1, 'glm-5.3-flash');
     const params = opencode.streamChatCompletion.mock.calls[0][0];
-    const userMessage = params.messages.find((m: { role: string }) => m.role === 'user');
+    const userMessage = params.messages.find(
+      (m: { role: string }) => m.role === 'user',
+    );
     expect(userMessage.content).toContain('<untrusted-user-data>');
   });
 
@@ -113,7 +146,10 @@ describe('BriefingService', () => {
     gmail.mockRejectedValue(new Error('Gmail request failed (500)'));
     const briefing = await service.build(1, 'glm-5.3-flash');
     expect(briefing.calendar.status).toBe('ok');
-    expect(briefing.mail).toEqual({ status: 'error', message: 'Could not read your mail.' });
+    expect(briefing.mail).toEqual({
+      status: 'error',
+      message: 'Could not read your mail.',
+    });
   });
 
   it('still returns the sections when summarization fails', async () => {
@@ -134,7 +170,7 @@ describe('BriefingService', () => {
     expect(briefing.summary).toBe('');
   });
 
-  it('carries the account\'s pending proposals', async () => {
+  it("carries the account's pending proposals", async () => {
     proposals.cards = [pendingCard('p1')];
     const briefing = await service.build(7, 'model-x');
     expect(proposals.calledWith).toBe(7);
@@ -156,13 +192,18 @@ describe('BriefingService', () => {
     // narrate "I have already scheduled..." over a card nobody confirmed.
     proposals.cards = [pendingCard('p1')];
     await service.build(7, 'model-x');
-    expect(JSON.stringify(opencode.streamChatCompletion.mock.calls[0][0])).not.toContain('p1');
+    expect(
+      JSON.stringify(opencode.streamChatCompletion.mock.calls[0][0]),
+    ).not.toContain('p1');
   });
 
   it('buildItems returns every section without calling the model', async () => {
     const items = await service.buildItems(1);
     expect(items.calendar.status).toBe('ok');
-    expect(items.tasks).toEqual({ status: 'ok', items: [expect.objectContaining({ id: 't1' })] });
+    expect(items.tasks).toEqual({
+      status: 'ok',
+      items: [expect.objectContaining({ id: 't1' })],
+    });
     expect(items.mail.status).toBe('ok');
     expect(items.mailHasMore).toBe(false);
     expect(opencode.streamChatCompletion).not.toHaveBeenCalled();
@@ -187,13 +228,18 @@ describe('BriefingService', () => {
     tasksFetcher.mockRejectedValue(new Error('Tasks request failed (500)'));
     const items = await service.buildItems(1);
     expect(items.calendar.status).toBe('ok');
-    expect(items.tasks).toEqual({ status: 'error', message: 'Could not read your tasks.' });
+    expect(items.tasks).toEqual({
+      status: 'error',
+      message: 'Could not read your tasks.',
+    });
   });
 
   it('puts tasks in the summarization payload', async () => {
     await service.build(1, 'glm-5.3-flash');
     const params = opencode.streamChatCompletion.mock.calls[0][0];
-    const userMessage = params.messages.find((m: { role: string }) => m.role === 'user');
+    const userMessage = params.messages.find(
+      (m: { role: string }) => m.role === 'user',
+    );
     expect(userMessage.content).toContain('Renew passport');
   });
 

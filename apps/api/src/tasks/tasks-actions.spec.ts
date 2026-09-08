@@ -17,10 +17,14 @@ describe('completeTask', () => {
     await completeTask('at-1', 't 1');
 
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/t%201');
+    expect(url).toBe(
+      'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/t%201',
+    );
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body as string)).toEqual({ status: 'completed' });
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer at-1');
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      'Bearer at-1',
+    );
   });
 
   it('treats a missing task as success', async () => {
@@ -30,6 +34,8 @@ describe('completeTask', () => {
 
   it('throws on any other failure', async () => {
     respondWith(500);
-    await expect(completeTask('at', 't1')).rejects.toThrow('Tasks complete failed (500)');
+    await expect(completeTask('at', 't1')).rejects.toThrow(
+      'Tasks complete failed (500)',
+    );
   });
 });

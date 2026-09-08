@@ -16,7 +16,10 @@ export class BriefingController {
     // Fixed model, not the user's chat selection: the briefing is a
     // background-ish summarization job, and its cost/latency shouldn't
     // change because someone picked a bigger model for chatting.
-    return this.briefing.build(accountId, process.env.BRIEFING_MODEL ?? 'glm-5.3-flash');
+    return this.briefing.build(
+      accountId,
+      process.env.BRIEFING_MODEL ?? 'glm-5.3-flash',
+    );
   }
 
   /**

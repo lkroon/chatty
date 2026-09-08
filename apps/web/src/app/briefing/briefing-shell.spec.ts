@@ -6,11 +6,7 @@ import type { Briefing, GoogleConnectionStatus } from '@contracts';
 
 import { BRIEFING_API, BriefingApi } from './briefing-api';
 import { BriefingShell } from './briefing-shell';
-import {
-  BRIEFING_CACHE_KEY,
-  itemFingerprint,
-  writeBriefingCache,
-} from '../core/briefing-cache';
+import { BRIEFING_CACHE_KEY, itemFingerprint, writeBriefingCache } from '../core/briefing-cache';
 
 // The briefing cache keys on `date` and rejects anything not from "today"
 // (see readBriefingCache in core/briefing-cache.ts), so the fixture's date
@@ -28,11 +24,21 @@ const CONNECTED: Briefing = {
   calendar: {
     status: 'ok',
     items: [
-      { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
+      {
+        id: 'e1',
+        title: 'Standup',
+        start: '2026-09-05T09:00:00+02:00',
+        end: null,
+        allDay: false,
+        location: null,
+      },
     ],
   },
   tasks: { status: 'ok', items: [] },
-  mail: { status: 'ok', items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }] },
+  mail: {
+    status: 'ok',
+    items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
+  },
   mailHasMore: false,
   pending: [],
   generatedAt: '2026-09-05T06:00:00.000Z',
@@ -137,7 +143,10 @@ describe('BriefingShell', () => {
 
   it('renders a per-section error without blanking the page', () => {
     const api = new StubApi();
-    api.briefing = { ...CONNECTED, mail: { status: 'error', message: 'Could not read your mail.' } };
+    api.briefing = {
+      ...CONNECTED,
+      mail: { status: 'error', message: 'Could not read your mail.' },
+    };
     const el = setup(api);
     expect(el.textContent).toContain('Could not read your mail.');
     expect(el.textContent).toContain('Standup');
@@ -262,8 +271,22 @@ describe('BriefingShell', () => {
       calendar: {
         status: 'ok' as const,
         items: [
-          { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
-          { id: 'e2', title: 'Follow-up', start: '2026-09-05T11:00:00+02:00', end: null, allDay: false, location: null },
+          {
+            id: 'e1',
+            title: 'Standup',
+            start: '2026-09-05T09:00:00+02:00',
+            end: null,
+            allDay: false,
+            location: null,
+          },
+          {
+            id: 'e2',
+            title: 'Follow-up',
+            start: '2026-09-05T11:00:00+02:00',
+            end: null,
+            allDay: false,
+            location: null,
+          },
         ],
       },
     };
@@ -296,8 +319,22 @@ describe('BriefingShell', () => {
       calendar: {
         status: 'ok' as const,
         items: [
-          { id: 'e1', title: 'Standup', start: '2026-09-05T09:00:00+02:00', end: null, allDay: false, location: null },
-          { id: 'e2', title: 'Follow-up', start: '2026-09-05T11:00:00+02:00', end: null, allDay: false, location: null },
+          {
+            id: 'e1',
+            title: 'Standup',
+            start: '2026-09-05T09:00:00+02:00',
+            end: null,
+            allDay: false,
+            location: null,
+          },
+          {
+            id: 'e2',
+            title: 'Follow-up',
+            start: '2026-09-05T11:00:00+02:00',
+            end: null,
+            allDay: false,
+            location: null,
+          },
         ],
       },
     };
@@ -323,7 +360,9 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+        ],
       },
     };
     const el = setup(api);
@@ -338,7 +377,9 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+        ],
       },
     };
     const el = setup(api);
@@ -353,7 +394,9 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+        ],
       },
     };
     const el = setup(api);
@@ -373,7 +416,9 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+        ],
       },
     };
     const el = setup(api);
@@ -400,7 +445,9 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+        ],
       },
     };
     const el = setup(api);

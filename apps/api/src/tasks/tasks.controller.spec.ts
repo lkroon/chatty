@@ -22,12 +22,18 @@ describe('TasksController', () => {
   });
 
   it('refuses a request with no session account', async () => {
-    await expect(controller.complete(req(), 't1')).rejects.toThrow(UnauthorizedException);
+    await expect(controller.complete(req(), 't1')).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('surfaces a missing scope as Forbidden', async () => {
-    service.complete.mockRejectedValue(new ForbiddenException('google_scope_missing'));
-    await expect(controller.complete(req('7'), 't1')).rejects.toThrow(ForbiddenException);
+    service.complete.mockRejectedValue(
+      new ForbiddenException('google_scope_missing'),
+    );
+    await expect(controller.complete(req('7'), 't1')).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   /**
@@ -35,6 +41,9 @@ describe('TasksController', () => {
    * by nothing else. If a task tool is ever added upstream, this fails.
    */
   it('is not exposed to the model as a tool', () => {
-    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual(['web_search', 'web_fetch']);
+    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual([
+      'web_search',
+      'web_fetch',
+    ]);
   });
 });

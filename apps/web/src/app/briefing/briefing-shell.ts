@@ -3,11 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 
-import {
-  itemFingerprint,
-  readBriefingCache,
-  writeBriefingCache,
-} from '../core/briefing-cache';
+import { itemFingerprint, readBriefingCache, writeBriefingCache } from '../core/briefing-cache';
 import { renderMarkdownToHtml } from '../core/markdown';
 import { ChattyLogo } from '../shared/chatty-logo';
 import { TodayChatSwitch } from '../shared/today-chat-switch';
@@ -69,11 +65,20 @@ const UNDO_WINDOW_MS = 6000;
             -->
             <section class="card connect-card">
               <h2>Connect Google</h2>
-              <p>Chatty builds this page from your calendar and mail, and can draft things back once you approve them.</p>
+              <p>
+                Chatty builds this page from your calendar and mail, and can draft things back once
+                you approve them.
+              </p>
               <ul class="scope-list">
                 <li><span aria-hidden="true">📅</span><span>Read today's events</span></li>
-                <li><span aria-hidden="true">✉️</span><span>Read recent mail — subjects and previews only</span></li>
-                <li><span aria-hidden="true">✅</span><span>Create events, tasks and emails you confirm first</span></li>
+                <li>
+                  <span aria-hidden="true">✉️</span
+                  ><span>Read recent mail — subjects and previews only</span>
+                </li>
+                <li>
+                  <span aria-hidden="true">✅</span
+                  ><span>Create events, tasks and emails you confirm first</span>
+                </li>
               </ul>
               <a class="connect" href="/auth/google/connect">Connect Google</a>
               <p class="hint">Nothing is written to Google until you tap Confirm on a card.</p>
@@ -115,7 +120,9 @@ const UNDO_WINDOW_MS = 6000;
                 @case ('ok') {
                   @for (event of b.calendar.items; track event.id) {
                     <div class="row">
-                      <span class="row__time">{{ event.allDay ? 'All day' : formatTime(event.start) }}</span>
+                      <span class="row__time">{{
+                        event.allDay ? 'All day' : formatTime(event.start)
+                      }}</span>
                       <span class="row__title">{{ event.title }}</span>
                     </div>
                   } @empty {
@@ -140,7 +147,9 @@ const UNDO_WINDOW_MS = 6000;
                         [attr.data-testid]="'complete-' + task.id"
                         (click)="completeTask(task.id)"
                         [attr.aria-label]="'Complete ' + task.title"
-                      >○</button>
+                      >
+                        ○
+                      </button>
                       <span class="task__body">
                         <span class="task__title">{{ task.title }}</span>
                         @if (task.overdue) {
@@ -153,7 +162,9 @@ const UNDO_WINDOW_MS = 6000;
                         [attr.data-testid]="'dismiss-' + task.id"
                         (click)="dismissTask(task.id)"
                         [attr.aria-label]="'Hide ' + task.title"
-                      >×</button>
+                      >
+                        ×
+                      </button>
                     </div>
                   } @empty {
                     <p class="hint">Nothing due today.</p>
@@ -213,9 +224,17 @@ const UNDO_WINDOW_MS = 6000;
       background: var(--oc-bg, #eef6f2);
       color: var(--oc-text, #23262b);
     }
-    .shell { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    .shell {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
     .topbar {
-      display: flex; align-items: center; gap: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
       padding: 0.6rem 0.9rem;
       padding-top: calc(0.6rem + env(safe-area-inset-top));
       background: var(--oc-surface, #fff);
@@ -223,12 +242,15 @@ const UNDO_WINDOW_MS = 6000;
       flex-shrink: 0;
     }
     .brand {
-      display: flex; align-items: center; flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
     }
     .refresh {
       flex-shrink: 0;
       margin-left: auto;
-      width: 44px; height: 44px;
+      width: 44px;
+      height: 44px;
       border-radius: 999px;
       border: 1px solid var(--oc-border, #dcece4);
       background: var(--oc-surface, #fff);
@@ -236,48 +258,96 @@ const UNDO_WINDOW_MS = 6000;
       font-size: 18px;
       cursor: pointer;
     }
-    .refresh:disabled { opacity: 0.5; cursor: default; }
+    .refresh:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
     .body {
-      flex: 1; min-height: 0; overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
       padding: 1rem;
       padding-bottom: calc(1rem + var(--kb-safe-bottom, 0px));
-      display: flex; flex-direction: column; gap: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
     }
     .card {
       background: var(--oc-surface, #fff);
-      border-radius: 18px; padding: 0.9rem 1rem;
+      border-radius: 18px;
+      padding: 0.9rem 1rem;
     }
     .card h2 {
-      margin: 0 0 0.6rem; font-size: 0.82rem; text-transform: uppercase;
-      letter-spacing: 0.04em; color: var(--oc-text-muted, #6f7a76);
+      margin: 0 0 0.6rem;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--oc-text-muted, #6f7a76);
     }
-    .row { display: flex; gap: 0.6rem; padding: 0.35rem 0; align-items: baseline; }
-    .row__time { flex-shrink: 0; font-weight: 700; font-size: 0.82rem; color: var(--oc-accent-ink, #7a2c22); }
-    .row__title { flex: 1; min-width: 0; }
-    .hint { margin: 0; color: var(--oc-text-muted, #6f7a76); }
+    .row {
+      display: flex;
+      gap: 0.6rem;
+      padding: 0.35rem 0;
+      align-items: baseline;
+    }
+    .row__time {
+      flex-shrink: 0;
+      font-weight: 700;
+      font-size: 0.82rem;
+      color: var(--oc-accent-ink, #7a2c22);
+    }
+    .row__title {
+      flex: 1;
+      min-width: 0;
+    }
+    .hint {
+      margin: 0;
+      color: var(--oc-text-muted, #6f7a76);
+    }
     .connect {
-      display: inline-flex; justify-content: center; width: 100%;
-      padding: 0.8rem 1rem; border-radius: 999px;
-      background: var(--oc-accent, #ff6f59); color: #fff;
-      font-weight: 700; text-decoration: none;
+      display: inline-flex;
+      justify-content: center;
+      width: 100%;
+      padding: 0.8rem 1rem;
+      border-radius: 999px;
+      background: var(--oc-accent, #ff6f59);
+      color: #fff;
+      font-weight: 700;
+      text-decoration: none;
     }
     .connect-card {
-      display: flex; flex-direction: column; gap: 0.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
       padding: 1.1rem 1rem;
     }
     .connect-card h2 {
       margin: 0;
-      font-family: 'Baloo 2', sans-serif; font-weight: 700;
-      font-size: 1.2rem; text-transform: none; letter-spacing: normal;
+      font-family: 'Baloo 2', sans-serif;
+      font-weight: 700;
+      font-size: 1.2rem;
+      text-transform: none;
+      letter-spacing: normal;
       color: var(--oc-accent-ink, #7a2c22);
     }
-    .connect-card p { margin: 0; line-height: 1.5; }
+    .connect-card p {
+      margin: 0;
+      line-height: 1.5;
+    }
     .scope-list {
-      margin: 0; padding: 0; list-style: none;
-      display: flex; flex-direction: column; gap: 0.35rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
       font-size: 0.9rem;
     }
-    .scope-list li { display: flex; gap: 0.5rem; align-items: baseline; }
+    .scope-list li {
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+    }
     .card--queue {
       border: 1px solid var(--oc-accent, #ff6f59);
     }
@@ -311,43 +381,95 @@ const UNDO_WINDOW_MS = 6000;
       color: #fff;
       cursor: pointer;
     }
-    .task { display: flex; gap: 0.6rem; align-items: center; padding: 0.35rem 0; min-height: 44px; }
-    .task__tick, .task__dismiss {
+    .task {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      padding: 0.35rem 0;
+      min-height: 44px;
+    }
+    .task__tick,
+    .task__dismiss {
       flex-shrink: 0;
-      width: 44px; height: 44px;
-      border-radius: 999px; border: none; background: none;
-      font-size: 20px; line-height: 1; cursor: pointer;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: none;
+      background: none;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
       color: var(--oc-text-muted, #6f7a76);
     }
-    .task__tick { color: var(--oc-accent, #ff6f59); }
-    .task__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .task__title { overflow-wrap: anywhere; }
-    .task__due { font-size: 0.78rem; color: var(--oc-error, #d64545); }
+    .task__tick {
+      color: var(--oc-accent, #ff6f59);
+    }
+    .task__body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .task__title {
+      overflow-wrap: anywhere;
+    }
+    .task__due {
+      font-size: 0.78rem;
+      color: var(--oc-error, #d64545);
+    }
 
     /* Stacked, not a single baseline row: a subject and a sender do not fit
        side by side on a phone, and the snippet was fetched and never shown. */
-    .mail { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.5rem 0; min-height: 44px; }
-    .mail__subject { font-weight: 600; overflow-wrap: anywhere; }
-    .mail__meta { font-size: 0.78rem; color: var(--oc-text-muted, #6f7a76); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mail {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.5rem 0;
+      min-height: 44px;
+    }
+    .mail__subject {
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    .mail__meta {
+      font-size: 0.78rem;
+      color: var(--oc-text-muted, #6f7a76);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .mail__snippet {
-      font-size: 0.85rem; color: var(--oc-text-muted, #6f7a76);
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      font-size: 0.85rem;
+      color: var(--oc-text-muted, #6f7a76);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .snackbar {
       position: absolute;
-      left: 1rem; right: 1rem;
+      left: 1rem;
+      right: 1rem;
       bottom: calc(1rem + var(--kb-safe-bottom, 0px));
-      display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
       padding: 0.7rem 1rem;
       border-radius: 14px;
       background: var(--oc-text, #23262b);
       color: #fff;
     }
     .snackbar__action {
-      border: none; background: none; color: var(--oc-mint, #bfe3d3);
-      font-weight: 700; font-size: 15px; cursor: pointer;
-      min-height: 44px; padding: 0 0.5rem;
+      border: none;
+      background: none;
+      color: var(--oc-mint, #bfe3d3);
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      min-height: 44px;
+      padding: 0 0.5rem;
     }
   `,
 })
@@ -415,59 +537,68 @@ export class BriefingShell {
     this.refreshing.set(true);
 
     if (full && !this.briefing()) {
-      this.api.getBriefing().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-        next: (briefing) => {
-          const { summary, ...items } = briefing;
-          this.summaryFingerprint = itemFingerprint(items);
-          this.briefing.set(briefing);
+      this.api
+        .getBriefing()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (briefing) => {
+            const { summary, ...items } = briefing;
+            this.summaryFingerprint = itemFingerprint(items);
+            this.briefing.set(briefing);
+            this.loading.set(false);
+            this.failed.set(false);
+            this.refreshing.set(false);
+            this.persist();
+          },
+          error: () => {
+            this.failed.set(true);
+            this.loading.set(false);
+            this.refreshing.set(false);
+          },
+        });
+      return;
+    }
+
+    this.api
+      .getBriefingItems()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (items) => {
+          const fingerprint = itemFingerprint(items);
+          const staleSummary = full && fingerprint !== this.summaryFingerprint;
+          // Silent swap: no badge, no confirmation. Nothing is lost by simply
+          // showing the newer data.
+          this.briefing.set({ ...items, summary: this.briefing()?.summary ?? '' });
           this.loading.set(false);
           this.failed.set(false);
-          this.refreshing.set(false);
           this.persist();
+
+          if (!staleSummary) {
+            this.refreshing.set(false);
+            return;
+          }
+          this.api
+            .getBriefing()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+              next: (briefing) => {
+                const { summary, ...fresh } = briefing;
+                this.summaryFingerprint = itemFingerprint(fresh);
+                this.briefing.set(briefing);
+                this.refreshing.set(false);
+                this.persist();
+              },
+              error: () => this.refreshing.set(false),
+            });
         },
         error: () => {
-          this.failed.set(true);
+          if (!this.briefing()) {
+            this.failed.set(true);
+          }
           this.loading.set(false);
           this.refreshing.set(false);
         },
       });
-      return;
-    }
-
-    this.api.getBriefingItems().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (items) => {
-        const fingerprint = itemFingerprint(items);
-        const staleSummary = full && fingerprint !== this.summaryFingerprint;
-        // Silent swap: no badge, no confirmation. Nothing is lost by simply
-        // showing the newer data.
-        this.briefing.set({ ...items, summary: this.briefing()?.summary ?? '' });
-        this.loading.set(false);
-        this.failed.set(false);
-        this.persist();
-
-        if (!staleSummary) {
-          this.refreshing.set(false);
-          return;
-        }
-        this.api.getBriefing().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-          next: (briefing) => {
-            const { summary, ...fresh } = briefing;
-            this.summaryFingerprint = itemFingerprint(fresh);
-            this.briefing.set(briefing);
-            this.refreshing.set(false);
-            this.persist();
-          },
-          error: () => this.refreshing.set(false),
-        });
-      },
-      error: () => {
-        if (!this.briefing()) {
-          this.failed.set(true);
-        }
-        this.loading.set(false);
-        this.refreshing.set(false);
-      },
-    });
   }
 
   private persist(): void {
@@ -505,15 +636,20 @@ export class BriefingShell {
    * afterwards is not simply the list minus a row.
    */
   protected completeTask(id: string): void {
-    this.hideTask(id, 'Task completed.', () => this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)));
-    this.api.completeTask(id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () => this.refresh(false),
-      error: () => {
-        this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id));
-        this.persist();
-        this.showUndo('Could not complete that task.', null);
-      },
-    });
+    this.hideTask(id, 'Task completed.', () =>
+      this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)),
+    );
+    this.api
+      .completeTask(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.refresh(false),
+        error: () => {
+          this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id));
+          this.persist();
+          this.showUndo('Could not complete that task.', null);
+        },
+      });
   }
 
   /** Local only. Google Tasks has no discard, and delete has no undo. */

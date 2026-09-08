@@ -30,7 +30,11 @@ describe('TasksService', () => {
   });
 
   it('completes the task once scope and token checks pass', async () => {
-    connections.find.mockResolvedValue({ accountId: 7, refreshTokenSealed: 'x', scopes: [TASKS_SCOPE] });
+    connections.find.mockResolvedValue({
+      accountId: 7,
+      refreshTokenSealed: 'x',
+      scopes: [TASKS_SCOPE],
+    });
     tokens.getAccessToken.mockResolvedValue('at-1');
     completeTaskMock.mockResolvedValue(undefined);
 
@@ -66,7 +70,11 @@ describe('TasksService', () => {
   });
 
   it('translates a NotConnectedError from getAccessToken into google_not_connected', async () => {
-    connections.find.mockResolvedValue({ accountId: 7, refreshTokenSealed: 'x', scopes: [TASKS_SCOPE] });
+    connections.find.mockResolvedValue({
+      accountId: 7,
+      refreshTokenSealed: 'x',
+      scopes: [TASKS_SCOPE],
+    });
     tokens.getAccessToken.mockRejectedValue(new NotConnectedError());
 
     const err = await captureRejection(service.complete(7, 't1'));
@@ -77,7 +85,11 @@ describe('TasksService', () => {
   });
 
   it('lets any other getAccessToken error propagate unchanged', async () => {
-    connections.find.mockResolvedValue({ accountId: 7, refreshTokenSealed: 'x', scopes: [TASKS_SCOPE] });
+    connections.find.mockResolvedValue({
+      accountId: 7,
+      refreshTokenSealed: 'x',
+      scopes: [TASKS_SCOPE],
+    });
     tokens.getAccessToken.mockRejectedValue(new Error('boom'));
 
     const err = await captureRejection(service.complete(7, 't1'));
@@ -88,7 +100,11 @@ describe('TasksService', () => {
   });
 
   it('checks the scope before ever calling getAccessToken', async () => {
-    connections.find.mockResolvedValue({ accountId: 7, refreshTokenSealed: 'x', scopes: [TASKS_SCOPE] });
+    connections.find.mockResolvedValue({
+      accountId: 7,
+      refreshTokenSealed: 'x',
+      scopes: [TASKS_SCOPE],
+    });
     tokens.getAccessToken.mockResolvedValue('at-1');
     completeTaskMock.mockResolvedValue(undefined);
 

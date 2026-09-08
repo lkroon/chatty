@@ -19,7 +19,10 @@ interface GoogleTask {
  * parameter, because `dueMax`'s treatment of undated tasks is not documented
  * and this filter has to be exact: an undated task must never appear.
  */
-export async function fetchDueTasks(accessToken: string, isoDate: string): Promise<BriefingTask[]> {
+export async function fetchDueTasks(
+  accessToken: string,
+  isoDate: string,
+): Promise<BriefingTask[]> {
   const params = new URLSearchParams({
     showCompleted: 'false',
     showHidden: 'false',
@@ -28,7 +31,10 @@ export async function fetchDueTasks(accessToken: string, isoDate: string): Promi
   });
 
   const response = await fetch(`${TASKS_URL}?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+    },
   });
   if (!response.ok) {
     throw new Error(`Tasks request failed (${response.status})`);

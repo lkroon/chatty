@@ -7,7 +7,10 @@ const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
  * UI can be behind reality, and completing something already gone must be a
  * silent success rather than an error the user has to interpret.
  */
-export async function completeTask(accessToken: string, taskId: string): Promise<void> {
+export async function completeTask(
+  accessToken: string,
+  taskId: string,
+): Promise<void> {
   const response = await fetch(`${TASKS_URL}/${encodeURIComponent(taskId)}`, {
     method: 'PATCH',
     headers: {
