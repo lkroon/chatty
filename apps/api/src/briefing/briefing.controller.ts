@@ -1,6 +1,6 @@
 import { Controller, Get, Req } from '@nestjs/common';
 import type { Request } from 'express';
-import type { Briefing } from '@contracts/briefing';
+import type { Briefing, BriefingItems } from '@contracts/briefing';
 import { BriefingService } from './briefing.service';
 import { requireAccountId } from '../google/session-account';
 
@@ -17,5 +17,14 @@ export class BriefingController {
     // background-ish summarization job, and its cost/latency shouldn't
     // change because someone picked a bigger model for chatting.
     return this.briefing.build(accountId, process.env.BRIEFING_MODEL ?? 'glm-5.3-flash');
+  }
+
+  /**
+   * The cheap path — no model call. The web app polls this; only an explicit
+   * Refresh, and only when the item set changed, asks for the full briefing.
+   */
+  @Get('items')
+  async items(@Req() req: Request): Promise<BriefingItems> {
+    return this.briefing.buildItems(requireAccountId(req));
   }
 }
