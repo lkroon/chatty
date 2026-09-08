@@ -17,6 +17,9 @@ import { RealBriefingApi } from './real-briefing-api';
 /** Foreground revalidation cadence. Mail and calendar move in minutes, not seconds. */
 const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
 
+/** How long an undo stays offered. Long enough to notice a misfire on a phone. */
+const UNDO_WINDOW_MS = 6000;
+
 /**
  * The daily overview, and the app's landing route. Sized to the visible
  * viewport like the chat shell — see core/viewport-fit.ts and styles.scss
@@ -126,13 +129,53 @@ const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
             </section>
 
             <section class="card">
+              <h2>Tasks</h2>
+              @switch (b.tasks.status) {
+                @case ('ok') {
+                  @for (task of visibleTasks(); track task.id) {
+                    <div class="task">
+                      <button
+                        type="button"
+                        class="task__tick"
+                        [attr.data-testid]="'complete-' + task.id"
+                        (click)="completeTask(task.id)"
+                        [attr.aria-label]="'Complete ' + task.title"
+                      >○</button>
+                      <span class="task__body">
+                        <span class="task__title">{{ task.title }}</span>
+                        @if (task.overdue) {
+                          <span class="task__due">Overdue · {{ task.due }}</span>
+                        }
+                      </span>
+                      <button
+                        type="button"
+                        class="task__dismiss"
+                        [attr.data-testid]="'dismiss-' + task.id"
+                        (click)="dismissTask(task.id)"
+                        [attr.aria-label]="'Hide ' + task.title"
+                      >×</button>
+                    </div>
+                  } @empty {
+                    <p class="hint">Nothing due today.</p>
+                  }
+                }
+                @case ('error') {
+                  <p class="hint">{{ b.tasks.message }}</p>
+                }
+              }
+            </section>
+
+            <section class="card">
               <h2>Mail</h2>
               @switch (b.mail.status) {
                 @case ('ok') {
                   @for (mail of b.mail.items; track mail.id) {
-                    <div class="row">
-                      <span class="row__title">{{ mail.subject }}</span>
-                      <span class="row__from">{{ mail.from }}</span>
+                    <div class="mail">
+                      <span class="mail__subject">{{ mail.subject }}</span>
+                      <span class="mail__meta">{{ mail.from }}</span>
+                      @if (mail.snippet) {
+                        <span class="mail__snippet">{{ mail.snippet }}</span>
+                      }
                     </div>
                   } @empty {
                     <p class="hint">No unread mail.</p>
@@ -142,10 +185,20 @@ const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
                   <p class="hint">{{ b.mail.message }}</p>
                 }
               }
+              @if (b.mailHasMore) {
+                <p class="hint">More unread in Gmail.</p>
+              }
             </section>
           }
         }
       </main>
+
+      @if (undo(); as u) {
+        <div class="snackbar" role="status">
+          <span>{{ u.label }}</span>
+          <button type="button" class="snackbar__action" (click)="undoLast()">Undo</button>
+        </div>
+      }
     </div>
   `,
   styles: `
@@ -158,7 +211,7 @@ const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
       background: var(--oc-bg, #eef6f2);
       color: var(--oc-text, #23262b);
     }
-    .shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    .shell { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
     .topbar {
       display: flex; align-items: center; gap: 0.6rem;
       padding: 0.6rem 0.9rem;
@@ -256,6 +309,44 @@ const REVALIDATE_INTERVAL_MS = 15 * 60 * 1000;
       background: var(--oc-accent, #ff6f59);
       color: #fff;
       cursor: pointer;
+    }
+    .task { display: flex; gap: 0.6rem; align-items: center; padding: 0.35rem 0; min-height: 44px; }
+    .task__tick, .task__dismiss {
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 999px; border: none; background: none;
+      font-size: 20px; line-height: 1; cursor: pointer;
+      color: var(--oc-text-muted, #6f7a76);
+    }
+    .task__tick { color: var(--oc-accent, #ff6f59); }
+    .task__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .task__title { overflow-wrap: anywhere; }
+    .task__due { font-size: 0.78rem; color: var(--oc-error, #d64545); }
+
+    /* Stacked, not a single baseline row: a subject and a sender do not fit
+       side by side on a phone, and the snippet was fetched and never shown. */
+    .mail { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.5rem 0; min-height: 44px; }
+    .mail__subject { font-weight: 600; overflow-wrap: anywhere; }
+    .mail__meta { font-size: 0.78rem; color: var(--oc-text-muted, #6f7a76); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mail__snippet {
+      font-size: 0.85rem; color: var(--oc-text-muted, #6f7a76);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .snackbar {
+      position: absolute;
+      left: 1rem; right: 1rem;
+      bottom: calc(1rem + var(--kb-safe-bottom, 0px));
+      display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+      padding: 0.7rem 1rem;
+      border-radius: 14px;
+      background: var(--oc-text, #23262b);
+      color: #fff;
+    }
+    .snackbar__action {
+      border: none; background: none; color: var(--oc-mint, #bfe3d3);
+      font-weight: 700; font-size: 15px; cursor: pointer;
+      min-height: 44px; padding: 0 0.5rem;
     }
   `,
 })
@@ -390,6 +481,72 @@ export class BriefingShell {
       dismissedTaskIds: this.dismissedTaskIds(),
       cachedAt: Date.now(),
     });
+  }
+
+  /** Tasks minus the ones dismissed locally. */
+  protected readonly visibleTasks = computed(() => {
+    const section = this.briefing()?.tasks;
+    if (!section || section.status !== 'ok') {
+      return [];
+    }
+    const hidden = new Set(this.dismissedTaskIds());
+    return section.items.filter((task) => !hidden.has(task.id));
+  });
+
+  protected readonly undo = signal<{ label: string; restore: () => void } | null>(null);
+  private undoTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Optimistic: the row leaves immediately, and a failure puts it back with a
+   * message. After a success the items are refetched rather than trusted —
+   * completing a recurring task spawns its next occurrence, so the list
+   * afterwards is not simply the list minus a row.
+   */
+  protected completeTask(id: string): void {
+    this.hideTask(id, 'Task completed.', () => this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)));
+    this.api.completeTask(id).subscribe({
+      next: () => this.refresh(false),
+      error: () => {
+        this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id));
+        this.persist();
+        this.showUndo('Could not complete that task.', () => undefined);
+      },
+    });
+  }
+
+  /** Local only. Google Tasks has no discard, and delete has no undo. */
+  protected dismissTask(id: string): void {
+    this.hideTask(id, 'Task hidden from Today.', () =>
+      this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)),
+    );
+  }
+
+  protected undoLast(): void {
+    const current = this.undo();
+    this.clearUndo();
+    current?.restore();
+    this.persist();
+  }
+
+  private hideTask(id: string, label: string, restore: () => void): void {
+    this.dismissedTaskIds.update((ids) => (ids.includes(id) ? ids : [...ids, id]));
+    this.persist();
+    this.showUndo(label, restore);
+  }
+
+  private showUndo(label: string, restore: () => void): void {
+    this.clearUndo();
+    this.undo.set({ label, restore });
+    this.undoTimer = setTimeout(() => this.undo.set(null), UNDO_WINDOW_MS);
+    this.destroyRef.onDestroy(() => this.clearUndo());
+  }
+
+  private clearUndo(): void {
+    if (this.undoTimer) {
+      clearTimeout(this.undoTimer);
+      this.undoTimer = null;
+    }
+    this.undo.set(null);
   }
 
   protected renderedSummary(): string {

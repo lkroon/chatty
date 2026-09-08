@@ -311,4 +311,59 @@ describe('BriefingShell', () => {
     expect(el.textContent).toContain('Follow-up');
     localStorage.removeItem(BRIEFING_CACHE_KEY);
   });
+
+  it('renders due tasks with a complete control', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+    expect(el.textContent).toContain('Renew passport');
+    expect(el.querySelector('[data-testid="complete-t1"]')).toBeTruthy();
+  });
+
+  it('removes a task optimistically and calls the API', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+    (el.querySelector('[data-testid="complete-t1"]') as HTMLButtonElement).click();
+    expect(api.completed).toEqual(['t1']);
+  });
+
+  it('renders the mail sender and snippet on their own lines', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      mail: {
+        status: 'ok',
+        items: [
+          { id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 'Are you free', receivedAt: '' },
+        ],
+      },
+    };
+    const el = setup(api);
+    expect(el.querySelector('.mail__subject')?.textContent).toContain('Lunch?');
+    expect(el.querySelector('.mail__snippet')?.textContent).toContain('Are you free');
+  });
+
+  it('shows an overflow line when there is more unread', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = { ...CONNECTED, mailHasMore: true };
+    const el = setup(api);
+    expect(el.textContent).toContain('More unread in Gmail');
+  });
 });
