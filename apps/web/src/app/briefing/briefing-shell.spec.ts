@@ -46,7 +46,7 @@ const CONNECTED: Briefing = {
 
 class StubApi implements BriefingApi {
   briefing: Briefing = CONNECTED;
-  status: GoogleConnectionStatus = { connected: true, scopes: [] };
+  status: GoogleConnectionStatus = { connected: true, scopes: [], needsReconnect: false };
   failBriefing = false;
   /** Consumed by the next getBriefing() call only, then resets itself. */
   failNextBriefing = false;
@@ -73,6 +73,15 @@ class StubApi implements BriefingApi {
       return throwError(() => new Error('boom'));
     }
     this.completed.push(id);
+    return of(undefined);
+  }
+  mailActions: Array<{ id: string; action: string }> = [];
+  markMailRead(id: string) {
+    this.mailActions.push({ id, action: 'read' });
+    return of(undefined);
+  }
+  archiveMail(id: string) {
+    this.mailActions.push({ id, action: 'archive' });
     return of(undefined);
   }
   getGoogleStatus() {
