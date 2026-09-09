@@ -528,4 +528,33 @@ describe('BriefingShell', () => {
     const el = setup(api);
     expect(el.textContent).toContain('More unread in Gmail');
   });
+  it('renders read and archive controls on a mail row', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      mail: {
+        status: 'ok',
+        items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
+      },
+    };
+    const el = setup(api);
+    expect(el.querySelector('[data-testid="read-m1"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="archive-m1"]')).toBeTruthy();
+  });
+
+  it('removes the row and calls archive', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      mail: {
+        status: 'ok',
+        items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
+      },
+    };
+    const el = setup(api);
+    (el.querySelector('[data-testid="archive-m1"]') as HTMLButtonElement).click();
+    expect(api.mailActions).toEqual([{ id: 'm1', action: 'archive' }]);
+  });
 });
