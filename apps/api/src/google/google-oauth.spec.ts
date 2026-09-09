@@ -1,5 +1,6 @@
 import {
   BRIEFING_SCOPES,
+  MAIL_ACTION_SCOPE,
   REQUIRED_SCOPE_BY_KIND,
   buildConsentUrl,
   exchangeCodeForTokens,
@@ -165,6 +166,25 @@ describe('google-oauth', () => {
       process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'yes';
       expect(writeToolsEnabled()).toBe(false);
     });
+
+    it('adds gmail.modify when write tools are on', () => {
+      process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'true';
+      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      expect(scope).toContain('https://www.googleapis.com/auth/gmail.modify');
+      // The existing grants are unchanged: this is an addition, not a swap.
+      expect(scope).toContain('https://www.googleapis.com/auth/gmail.readonly');
+      expect(scope).toContain('https://www.googleapis.com/auth/gmail.send');
+    });
+
+    it('does not request gmail.modify when write tools are off', () => {
+      process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'false';
+      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      expect(scope).not.toContain('gmail.modify');
+    });
+  });
+
+  it('exposes the mail-action scope for the routes to check', () => {
+    expect(MAIL_ACTION_SCOPE).toBe('https://www.googleapis.com/auth/gmail.modify');
   });
 
   describe('REQUIRED_SCOPE_BY_KIND', () => {

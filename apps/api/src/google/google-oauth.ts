@@ -23,19 +23,34 @@ export const BRIEFING_SCOPES = [
 /**
  * The write scopes, requested only when GOOGLE_WRITE_TOOLS_ENABLED=true.
  *
- * All three are *sensitive*, not restricted — note that `gmail.send` is a
- * lower tier than `gmail.compose`, because composing implies mailbox access.
- * plan 1's `gmail.readonly` already put this project in the restricted
- * bucket, so these add no new verification burden.
+ * `calendar.events`, `tasks` and `gmail.send` are *sensitive*, not restricted
+ * — note that `gmail.send` is a lower tier than `gmail.compose`, because
+ * composing implies mailbox access. `gmail.modify` IS restricted, but plan 1's
+ * `gmail.readonly` already put this project in the restricted bucket, so it
+ * adds no new verification tier — only a broader grant, and a re-consent for
+ * every account that connected before it existed.
  *
- * Granting them changes what a confirmed proposal can do; it does NOT change
- * what the model can do on its own — see proposals.service.ts.
+ * `gmail.modify` grants message-body access. This app still never reads a
+ * body: gmail-source.ts keeps `format=metadata` with a header allowlist, and
+ * that is a security boundary, not an optimization.
+ *
+ * Granting these changes what a confirmed proposal, and what a user's own tap
+ * on the Today screen, can do; it does NOT change what the model can do on its
+ * own — see proposals.service.ts and mail.controller.ts.
  */
 export const WRITE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/tasks',
   'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.modify',
 ];
+
+/**
+ * The scope the Today mail actions need. Checked against the scopes Google
+ * actually granted before a route touches Gmail, so an account connected
+ * before this scope existed gets "reconnect Google" rather than an opaque 403.
+ */
+export const MAIL_ACTION_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 
 /** The write tools are off unless this is exactly "true". */
 export function writeToolsEnabled(): boolean {
