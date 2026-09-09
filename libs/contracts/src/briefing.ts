@@ -18,6 +18,23 @@ export interface BriefingEvent {
   location: string | null;
 }
 
+/**
+ * One task from the account's default Google Tasks list.
+ *
+ * Only tasks that are due today or overdue reach Today — a task with no due
+ * date is parked, not pending, and an undated backlog would swamp the
+ * calendar and mail it sits next to.
+ */
+export interface BriefingTask {
+  id: string;
+  title: string;
+  /** `YYYY-MM-DD`. Never null: an undated task is filtered out by the source. */
+  due: string;
+  /** True when `due` is earlier than the briefing's `date`. */
+  overdue: boolean;
+  notes: string | null;
+}
+
 /** One mail, metadata and snippet only — never the body. */
 export interface BriefingMail {
   id: string;
@@ -47,7 +64,16 @@ export interface Briefing {
   /** Markdown. Empty string when summarization failed; the sections still render. */
   summary: string;
   calendar: BriefingSection<BriefingEvent>;
+  /** Tasks due today or overdue, soonest first. */
+  tasks: BriefingSection<BriefingTask>;
   mail: BriefingSection<BriefingMail>;
+  /**
+   * True when the unread window held more messages than the section shows.
+   * A boolean, not a count: Gmail's list response gives no reliable total
+   * for a filtered window, and an estimate that is sometimes wrong is worse
+   * than "there is more".
+   */
+  mailHasMore: boolean;
   /**
    * Writes the model proposed that are still waiting on the user, oldest
    * first. Empty when the write tools are off, when nothing is pending, or
@@ -59,3 +85,12 @@ export interface Briefing {
   /** ISO timestamp this briefing was generated. */
   generatedAt: string;
 }
+
+/**
+ * Response body of `GET /api/briefing/items` — everything the Today screen
+ * renders except the model-written summary.
+ *
+ * The summary is the only expensive part of a briefing (one upstream model
+ * call); polling must never pay for it.
+ */
+export type BriefingItems = Omit<Briefing, 'summary'>;

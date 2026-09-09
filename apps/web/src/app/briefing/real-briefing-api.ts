@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, from } from 'rxjs';
-import type { Briefing, GoogleConnectionStatus } from '@contracts';
+import type { Briefing, BriefingItems, GoogleConnectionStatus } from '@contracts';
 
+import { clearBriefingCache } from '../core/briefing-cache';
 import { BriefingApi } from './briefing-api';
 
 /**
@@ -17,19 +18,36 @@ export class RealBriefingApi implements BriefingApi {
     return from(this.getJson<Briefing>('/api/briefing'));
   }
 
+  getBriefingItems(): Observable<BriefingItems> {
+    return from(this.getJson<BriefingItems>('/api/briefing/items'));
+  }
+
+  completeTask(id: string): Observable<void> {
+    return from(
+      this.request(`/api/tasks/${encodeURIComponent(id)}/complete`, { method: 'POST' }).then(
+        () => undefined,
+      ),
+    );
+  }
+
   getGoogleStatus(): Observable<GoogleConnectionStatus> {
     return from(this.getJson<GoogleConnectionStatus>('/api/google/status'));
   }
 
   disconnectGoogle(): Observable<void> {
     return from(
-      this.request('/api/google/connection', { method: 'DELETE' }).then(() => undefined),
+      this.request('/api/google/connection', { method: 'DELETE' }).then(() => {
+        clearBriefingCache();
+        return undefined;
+      }),
     );
   }
 
   private async request(path: string, init?: RequestInit): Promise<Response> {
     const response = await fetch(path, init);
     if (response.status === 401 || response.status === 403) {
+      // Senders and subjects must not survive a session that has ended.
+      clearBriefingCache();
       void this.router.navigateByUrl('/login');
       throw new Error(`authentication required (${response.status})`);
     }

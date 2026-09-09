@@ -7,9 +7,11 @@ import {
   BriefingService,
   CALENDAR_FETCHER,
   GMAIL_FETCHER,
+  TASKS_FETCHER,
 } from './briefing.service';
 import { fetchTodaysEvents } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
+import { fetchDueTasks } from './tasks-source';
 
 // The two source functions are injected rather than imported directly by
 // BriefingService so its unit tests can substitute them without stubbing
@@ -21,6 +23,7 @@ import { fetchRecentMail } from './gmail-source';
     BriefingService,
     { provide: CALENDAR_FETCHER, useValue: fetchTodaysEvents },
     { provide: GMAIL_FETCHER, useValue: fetchRecentMail },
+    { provide: TASKS_FETCHER, useValue: fetchDueTasks },
   ],
 })
 export class BriefingModule {}

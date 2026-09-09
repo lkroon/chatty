@@ -7,7 +7,10 @@ function fakeRequest(session: Record<string, unknown> | undefined): Request {
 }
 
 describe('BriefingController', () => {
-  const service = { build: jest.fn() };
+  const service = {
+    build: jest.fn(),
+    buildItems: jest.fn().mockResolvedValue({}),
+  };
   let controller: BriefingController;
 
   beforeEach(() => {
@@ -17,7 +20,9 @@ describe('BriefingController', () => {
   });
 
   it('rejects a request with no session account', async () => {
-    await expect(controller.get(fakeRequest({}))).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(controller.get(fakeRequest({}))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('passes the numeric account id through', async () => {
@@ -37,5 +42,10 @@ describe('BriefingController', () => {
     service.build.mockResolvedValue({});
     await controller.get(fakeRequest({ accountId: '1' }));
     expect(service.build).toHaveBeenCalledWith(1, 'glm-5.3');
+  });
+
+  it('serves items without a model', async () => {
+    await controller.items({ session: { accountId: '3' } } as never);
+    expect(service.buildItems).toHaveBeenCalledWith(3);
   });
 });

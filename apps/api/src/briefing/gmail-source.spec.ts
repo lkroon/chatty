@@ -8,8 +8,18 @@ describe('fetchRecentMail', () => {
 
   function routeFetch(handler: (url: string) => unknown): jest.Mock {
     const mock = jest.fn((url: string) =>
-      Promise.resolve(new Response(JSON.stringify(handler(url)), { status: 200 })),
+      Promise.resolve(
+        new Response(JSON.stringify(handler(url)), { status: 200 }),
+      ),
     );
+    global.fetch = mock as unknown as typeof fetch;
+    return mock;
+  }
+
+  function respondWith(body: unknown, status = 200): jest.Mock {
+    const mock = jest
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(body), { status }));
     global.fetch = mock as unknown as typeof fetch;
     return mock;
   }
@@ -26,21 +36,29 @@ describe('fetchRecentMail', () => {
     },
   };
 
-  it('lists unread mail from the last day and fetches metadata only', async () => {
-    const mock = routeFetch((url) => (url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] }));
+  it('lists unread mail from the last seven days and fetches metadata only', async () => {
+    const mock = routeFetch((url) =>
+      url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] },
+    );
     await fetchRecentMail('at-1');
 
     const listUrl = new URL(mock.mock.calls[0][0] as string);
-    expect(listUrl.searchParams.get('q')).toBe('is:unread newer_than:1d');
+    expect(listUrl.searchParams.get('q')).toBe('is:unread newer_than:7d');
 
     const getUrl = new URL(mock.mock.calls[1][0] as string);
     expect(getUrl.searchParams.get('format')).toBe('metadata');
-    expect(getUrl.searchParams.getAll('metadataHeaders')).toEqual(['From', 'Subject']);
+    expect(getUrl.searchParams.getAll('metadataHeaders')).toEqual([
+      'From',
+      'Subject',
+    ]);
   });
 
   it('maps a message to from/subject/snippet', async () => {
-    routeFetch((url) => (url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] }));
-    await expect(fetchRecentMail('at')).resolves.toEqual([
+    routeFetch((url) =>
+      url.includes('/messages/m1') ? messageBody : { messages: [{ id: 'm1' }] },
+    );
+    const result = await fetchRecentMail('at');
+    expect(result.items).toEqual([
       {
         id: 'm1',
         from: 'Alice <alice@example.com>',
@@ -53,7 +71,8 @@ describe('fetchRecentMail', () => {
 
   it('returns an empty list when nothing matches', async () => {
     routeFetch(() => ({}));
-    await expect(fetchRecentMail('at')).resolves.toEqual([]);
+    const result = await fetchRecentMail('at');
+    expect(result.items).toEqual([]);
   });
 
   it('substitutes placeholders for missing headers', async () => {
@@ -62,7 +81,8 @@ describe('fetchRecentMail', () => {
         ? { id: 'm1', snippet: '', internalDate: '0', payload: { headers: [] } }
         : { messages: [{ id: 'm1' }] },
     );
-    const [mail] = await fetchRecentMail('at');
+    const { items } = await fetchRecentMail('at');
+    const [mail] = items;
     expect(mail.from).toBe('(unknown sender)');
     expect(mail.subject).toBe('(no subject)');
   });
@@ -73,7 +93,8 @@ describe('fetchRecentMail', () => {
         ? { ...messageBody, snippet: 'x'.repeat(500) }
         : { messages: [{ id: 'm1' }] },
     );
-    const [mail] = await fetchRecentMail('at');
+    const { items } = await fetchRecentMail('at');
+    const [mail] = items;
     expect(mail.snippet.length).toBeLessThanOrEqual(200);
   });
 
@@ -83,15 +104,20 @@ describe('fetchRecentMail', () => {
         return Promise.resolve(new Response('{}', { status: 500 }));
       }
       if (url.includes('/messages/m1')) {
-        return Promise.resolve(new Response(JSON.stringify(messageBody), { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify(messageBody), { status: 200 }),
+        );
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ messages: [{ id: 'm1' }, { id: 'm2' }] }), { status: 200 }),
+        new Response(
+          JSON.stringify({ messages: [{ id: 'm1' }, { id: 'm2' }] }),
+          { status: 200 },
+        ),
       );
     }) as unknown as typeof fetch;
 
-    const mail = await fetchRecentMail('at');
-    expect(mail.map((m) => m.id)).toEqual(['m1']);
+    const result = await fetchRecentMail('at');
+    expect(result.items.map((m) => m.id)).toEqual(['m1']);
   });
 
   it('skips a message whose body is a 200 but not JSON', async () => {
@@ -99,14 +125,84 @@ describe('fetchRecentMail', () => {
       Promise.resolve(
         url.includes('/messages/m1')
           ? new Response('<html>not json</html>', { status: 200 })
-          : new Response(JSON.stringify({ messages: [{ id: 'm1' }] }), { status: 200 }),
+          : new Response(JSON.stringify({ messages: [{ id: 'm1' }] }), {
+              status: 200,
+            }),
       ),
     ) as unknown as typeof fetch;
-    await expect(fetchRecentMail('at')).resolves.toEqual([]);
+    const result = await fetchRecentMail('at');
+    expect(result.items).toEqual([]);
   });
 
   it('throws when the list call itself fails', async () => {
-    global.fetch = jest.fn().mockResolvedValue(new Response('{}', { status: 401 })) as unknown as typeof fetch;
-    await expect(fetchRecentMail('at')).rejects.toThrow(/Gmail request failed \(401\)/);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        new Response('{}', { status: 401 }),
+      ) as unknown as typeof fetch;
+    await expect(fetchRecentMail('at')).rejects.toThrow(
+      /Gmail request failed \(401\)/,
+    );
+  });
+
+  it('queries a seven-day unread window', async () => {
+    const mock = respondWith({ messages: [] });
+    await fetchRecentMail('at');
+    const [url] = mock.mock.calls[0] as [string];
+    expect(new URL(url).searchParams.get('q')).toBe('is:unread newer_than:7d');
+  });
+
+  it('reports hasMore and trims to the cap when the window overflows', async () => {
+    // 11 ids come back; MAX_MESSAGES is 10.
+    const ids = Array.from({ length: 11 }, (_, i) => ({ id: `m${i}` }));
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('?q=') || url.includes('&q=')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: ids }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'x',
+            snippet: 's',
+            internalDate: '0',
+            payload: { headers: [] },
+          }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await fetchRecentMail('at');
+    expect(result.items.length).toBe(10);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('does not report hasMore when the window lands exactly at the cap', async () => {
+    // Exactly 10 ids come back; MAX_MESSAGES is 10.
+    const ids = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}` }));
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('?q=') || url.includes('&q=')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: ids }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'x',
+            snippet: 's',
+            internalDate: '0',
+            payload: { headers: [] },
+          }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await fetchRecentMail('at');
+    expect(result.items.length).toBe(10);
+    expect(result.hasMore).toBe(false);
   });
 });
