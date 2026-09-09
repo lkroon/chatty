@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import type { GoogleConnectionStatus } from '@contracts/briefing';
 import { GoogleConnectionsRepository } from './google-connections.repository';
 import { GoogleTokenService } from './google-token.service';
+import { MAIL_ACTION_SCOPE, writeToolsEnabled } from './google-oauth';
 import { requireAccountId } from './session-account';
 
 /**
@@ -23,8 +24,16 @@ export class GoogleConnectionController {
     const accountId = requireAccountId(req);
     const connection = await this.connections.find(accountId);
     return connection
-      ? { connected: true, scopes: connection.scopes }
-      : { connected: false, scopes: [] };
+      ? {
+          connected: true,
+          scopes: connection.scopes,
+          // Only a concern while the write tools are on: with them off the app
+          // never asks for the scope, so a missing grant is correct, not stale.
+          needsReconnect:
+            writeToolsEnabled() &&
+            !connection.scopes.includes(MAIL_ACTION_SCOPE),
+        }
+      : { connected: false, scopes: [], needsReconnect: false };
   }
 
   @Delete('connection')

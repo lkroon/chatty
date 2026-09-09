@@ -5,6 +5,12 @@ export interface GoogleConnectionStatus {
   connected: boolean;
   /** Scopes actually granted, as returned by Google. Empty when not connected. */
   scopes: string[];
+  /**
+   * True when this connection predates a scope the app now needs. The user has
+   * to run through the consent screen again; nothing is broken until they do,
+   * the affected actions are simply unavailable.
+   */
+  needsReconnect: boolean;
 }
 
 /** One calendar event, already narrowed to what the summary needs. */

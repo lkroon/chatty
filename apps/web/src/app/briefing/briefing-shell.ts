@@ -1,6 +1,7 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { Observable } from 'rxjs';
 import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 
 import { itemFingerprint, readBriefingCache, writeBriefingCache } from '../core/briefing-cache';
@@ -49,6 +50,16 @@ const UNDO_WINDOW_MS = 6000;
       </header>
 
       <main class="body">
+        @if (needsReconnect()) {
+          <section class="card card--queue">
+            <h2>Reconnect Google</h2>
+            <p>
+              Chatty needs one more permission before it can mark mail read or archive it from here.
+              Nothing else is affected.
+            </p>
+            <a class="connect" href="/auth/google/connect">Reconnect Google</a>
+          </section>
+        }
         @if (loading()) {
           <p class="hint">Loading your briefing…</p>
         } @else if (failed()) {
@@ -180,13 +191,35 @@ const UNDO_WINDOW_MS = 6000;
               <h2>Mail</h2>
               @switch (b.mail.status) {
                 @case ('ok') {
-                  @for (mail of b.mail.items; track mail.id) {
+                  @for (mail of visibleMail(); track mail.id) {
                     <div class="mail">
-                      <span class="mail__subject">{{ mail.subject }}</span>
-                      <span class="mail__meta">{{ mail.from }}</span>
-                      @if (mail.snippet) {
-                        <span class="mail__snippet">{{ mail.snippet }}</span>
-                      }
+                      <span class="mail__body">
+                        <span class="mail__subject">{{ mail.subject }}</span>
+                        <span class="mail__meta">{{ mail.from }}</span>
+                        @if (mail.snippet) {
+                          <span class="mail__snippet">{{ mail.snippet }}</span>
+                        }
+                      </span>
+                      <span class="mail__actions">
+                        <button
+                          type="button"
+                          class="mail__action"
+                          [attr.data-testid]="'read-' + mail.id"
+                          (click)="markMailRead(mail.id)"
+                          [attr.aria-label]="'Mark read: ' + mail.subject"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          class="mail__action"
+                          [attr.data-testid]="'archive-' + mail.id"
+                          (click)="archiveMail(mail.id)"
+                          [attr.aria-label]="'Archive: ' + mail.subject"
+                        >
+                          ↓
+                        </button>
+                      </span>
                     </div>
                   } @empty {
                     <p class="hint">No unread mail.</p>
@@ -447,6 +480,40 @@ const UNDO_WINDOW_MS = 6000;
       overflow: hidden;
     }
 
+    /* Overrides the column layout above: the row becomes body + actions, and
+       .mail__body keeps the stacked subject/sender/snippet. */
+    .mail {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .mail__body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .mail__actions {
+      flex-shrink: 0;
+      display: flex;
+      gap: 0.15rem;
+    }
+    .mail__action {
+      width: 44px;
+      height: 44px;
+      border: none;
+      background: none;
+      border-radius: 999px;
+      font-size: 17px;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--oc-text-muted, #6f7a76);
+    }
+    .mail__action:active {
+      background: var(--oc-active, #bfe3d3);
+    }
+
     .snackbar {
       position: absolute;
       left: 1rem;
@@ -504,6 +571,16 @@ export class BriefingShell {
     } else {
       this.refresh(true);
     }
+
+    // Drives the reconnect card: a connection made before gmail.modify existed
+    // keeps working for everything else, so this is a prompt, not an error.
+    this.api
+      .getGoogleStatus()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (status) => this.needsReconnect.set(status.connected && status.needsReconnect),
+        error: () => this.needsReconnect.set(false),
+      });
 
     // Timers are throttled in a background tab and an installed iOS PWA is
     // suspended outright, so the interval alone would not fire. Focus and
@@ -625,6 +702,50 @@ export class BriefingShell {
     const hidden = new Set(this.dismissedTaskIds());
     return section.items.filter((task) => !hidden.has(task.id));
   });
+
+  /** Ids acted on locally, so the row leaves before the server confirms. */
+  private readonly actedMailIds = signal<string[]>([]);
+
+  protected readonly needsReconnect = signal(false);
+
+  protected readonly visibleMail = computed(() => {
+    const section = this.briefing()?.mail;
+    if (!section || section.status !== 'ok') {
+      return [];
+    }
+    const hidden = new Set(this.actedMailIds());
+    return section.items.filter((mail) => !hidden.has(mail.id));
+  });
+
+  protected markMailRead(id: string): void {
+    this.actOnMail(id, 'Marked as read.', () => this.api.markMailRead(id));
+  }
+
+  protected archiveMail(id: string): void {
+    this.actOnMail(id, 'Archived.', () => this.api.archiveMail(id));
+  }
+
+  /**
+   * Optimistic, then reconciled. The local read-state flip is what keeps the
+   * cache and Gmail agreeing without a round trip; the refresh afterwards is
+   * what makes a failure visible rather than silently wrong.
+   */
+  private actOnMail(id: string, label: string, call: () => Observable<void>): void {
+    this.actedMailIds.update((ids) => (ids.includes(id) ? ids : [...ids, id]));
+    this.showUndo(label, () => this.actedMailIds.update((ids) => ids.filter((x) => x !== id)));
+    call()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.refresh(false),
+        error: (err: Error) => {
+          this.actedMailIds.update((ids) => ids.filter((x) => x !== id));
+          if (err.message.includes('403')) {
+            this.needsReconnect.set(true);
+          }
+          this.showUndo('Could not update that message.', null);
+        },
+      });
+  }
 
   protected readonly undo = signal<{ label: string; restore: (() => void) | null } | null>(null);
   private undoTimer: ReturnType<typeof setTimeout> | null = null;
