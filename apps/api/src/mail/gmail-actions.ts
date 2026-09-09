@@ -14,14 +14,17 @@ async function modify(
   messageId: string,
   removeLabelIds: string[],
 ): Promise<void> {
-  const response = await fetch(`${GMAIL_BASE}/${encodeURIComponent(messageId)}/modify`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    `${GMAIL_BASE}/${encodeURIComponent(messageId)}/modify`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ removeLabelIds }),
     },
-    body: JSON.stringify({ removeLabelIds }),
-  });
+  );
 
   if (response.status === 404) {
     return;
@@ -32,7 +35,10 @@ async function modify(
 }
 
 /** Removes UNREAD. The message stays in the inbox. */
-export async function markMessageRead(accessToken: string, messageId: string): Promise<void> {
+export async function markMessageRead(
+  accessToken: string,
+  messageId: string,
+): Promise<void> {
   await modify(accessToken, messageId, ['UNREAD']);
 }
 
@@ -41,6 +47,9 @@ export async function markMessageRead(accessToken: string, messageId: string): P
  * Gmail. UNREAD goes too: an archived message that stays unread would come
  * back on the next Today refresh, since the section queries `is:unread`.
  */
-export async function archiveMessage(accessToken: string, messageId: string): Promise<void> {
+export async function archiveMessage(
+  accessToken: string,
+  messageId: string,
+): Promise<void> {
   await modify(accessToken, messageId, ['INBOX', 'UNREAD']);
 }

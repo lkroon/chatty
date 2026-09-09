@@ -26,7 +26,9 @@ describe('google-oauth', () => {
   describe('buildConsentUrl', () => {
     it('requests offline access and forces the consent screen', () => {
       const url = new URL(buildConsentUrl('state-123'));
-      expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+      expect(url.origin + url.pathname).toBe(
+        'https://accounts.google.com/o/oauth2/v2/auth',
+      );
       expect(url.searchParams.get('access_type')).toBe('offline');
       expect(url.searchParams.get('prompt')).toBe('consent');
       expect(url.searchParams.get('state')).toBe('state-123');
@@ -78,28 +80,42 @@ describe('google-oauth', () => {
 
     it('throws when Google omits the refresh token', async () => {
       global.fetch = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: 'at', expires_in: 3599, scope: '' }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({ access_token: 'at', expires_in: 3599, scope: '' }),
+          {
+            status: 200,
+          },
+        ),
       ) as unknown as typeof fetch;
 
-      await expect(exchangeCodeForTokens('c')).rejects.toThrow(/no refresh_token/);
+      await expect(exchangeCodeForTokens('c')).rejects.toThrow(
+        /no refresh_token/,
+      );
     });
 
     it('throws, without echoing the body, on a non-200', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        new Response('{"error":"invalid_grant"}', { status: 400 }),
-      ) as unknown as typeof fetch;
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          new Response('{"error":"invalid_grant"}', { status: 400 }),
+        ) as unknown as typeof fetch;
 
-      await expect(exchangeCodeForTokens('c')).rejects.toThrow(/token exchange failed \(400\)/);
+      await expect(exchangeCodeForTokens('c')).rejects.toThrow(
+        /token exchange failed \(400\)/,
+      );
     });
   });
 
   describe('refreshAccessToken', () => {
     it('returns a fresh access token and its lifetime', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: 'fresh', expires_in: 3599 }), { status: 200 }),
-      ) as unknown as typeof fetch;
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ access_token: 'fresh', expires_in: 3599 }),
+            { status: 200 },
+          ),
+        ) as unknown as typeof fetch;
 
       await expect(refreshAccessToken('rt')).resolves.toEqual({
         accessToken: 'fresh',
@@ -108,27 +124,37 @@ describe('google-oauth', () => {
     });
 
     it('reports a revoked grant distinguishably', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        new Response('{"error":"invalid_grant"}', { status: 400 }),
-      ) as unknown as typeof fetch;
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          new Response('{"error":"invalid_grant"}', { status: 400 }),
+        ) as unknown as typeof fetch;
 
-      await expect(refreshAccessToken('rt')).rejects.toThrow(/GOOGLE_GRANT_REVOKED/);
+      await expect(refreshAccessToken('rt')).rejects.toThrow(
+        /GOOGLE_GRANT_REVOKED/,
+      );
     });
 
     it('throws when a successful refresh response has no access_token', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ expires_in: 3600 }), { status: 200 }),
-      ) as unknown as typeof fetch;
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ expires_in: 3600 }), { status: 200 }),
+        ) as unknown as typeof fetch;
 
       await expect(refreshAccessToken('rt')).rejects.toThrow(/no access_token/);
     });
 
     it('throws a generic error for a non-400/401 refresh failure', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        new Response('{}', { status: 500 }),
-      ) as unknown as typeof fetch;
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          new Response('{}', { status: 500 }),
+        ) as unknown as typeof fetch;
 
-      await expect(refreshAccessToken('rt')).rejects.toThrow(/Google token refresh failed \(500\)/);
+      await expect(refreshAccessToken('rt')).rejects.toThrow(
+        /Google token refresh failed \(500\)/,
+      );
     });
   });
 
@@ -154,8 +180,11 @@ describe('google-oauth', () => {
 
     it('adds the three write scopes when write tools are on', () => {
       process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'true';
-      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
-      expect(scope).toContain('https://www.googleapis.com/auth/calendar.events');
+      const scope =
+        new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      expect(scope).toContain(
+        'https://www.googleapis.com/auth/calendar.events',
+      );
       expect(scope).toContain('https://www.googleapis.com/auth/tasks');
       expect(scope).toContain('https://www.googleapis.com/auth/gmail.send');
       // The read scopes must still be requested — this is one grant, not two.
@@ -169,7 +198,8 @@ describe('google-oauth', () => {
 
     it('adds gmail.modify when write tools are on', () => {
       process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'true';
-      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      const scope =
+        new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
       expect(scope).toContain('https://www.googleapis.com/auth/gmail.modify');
       // The existing grants are unchanged: this is an addition, not a swap.
       expect(scope).toContain('https://www.googleapis.com/auth/gmail.readonly');
@@ -178,13 +208,16 @@ describe('google-oauth', () => {
 
     it('does not request gmail.modify when write tools are off', () => {
       process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'false';
-      const scope = new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
+      const scope =
+        new URL(buildConsentUrl('s')).searchParams.get('scope') ?? '';
       expect(scope).not.toContain('gmail.modify');
     });
   });
 
   it('exposes the mail-action scope for the routes to check', () => {
-    expect(MAIL_ACTION_SCOPE).toBe('https://www.googleapis.com/auth/gmail.modify');
+    expect(MAIL_ACTION_SCOPE).toBe(
+      'https://www.googleapis.com/auth/gmail.modify',
+    );
   });
 
   describe('REQUIRED_SCOPE_BY_KIND', () => {

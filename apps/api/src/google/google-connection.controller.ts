@@ -29,7 +29,9 @@ export class GoogleConnectionController {
           scopes: connection.scopes,
           // Only a concern while the write tools are on: with them off the app
           // never asks for the scope, so a missing grant is correct, not stale.
-          needsReconnect: writeToolsEnabled() && !connection.scopes.includes(MAIL_ACTION_SCOPE),
+          needsReconnect:
+            writeToolsEnabled() &&
+            !connection.scopes.includes(MAIL_ACTION_SCOPE),
         }
       : { connected: false, scopes: [], needsReconnect: false };
   }

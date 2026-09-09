@@ -59,7 +59,9 @@ export function writeToolsEnabled(): boolean {
 
 /** Scopes to request on the consent screen, given the current configuration. */
 export function grantedScopes(): string[] {
-  return writeToolsEnabled() ? [...BRIEFING_SCOPES, ...WRITE_SCOPES] : [...BRIEFING_SCOPES];
+  return writeToolsEnabled()
+    ? [...BRIEFING_SCOPES, ...WRITE_SCOPES]
+    : [...BRIEFING_SCOPES];
 }
 
 /**
@@ -113,7 +115,9 @@ export function buildConsentUrl(state: string): string {
   return `${AUTH_ENDPOINT}?${params.toString()}`;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<ExchangedTokens> {
+export async function exchangeCodeForTokens(
+  code: string,
+): Promise<ExchangedTokens> {
   const { clientId, clientSecret } = requireCredentials();
   const response = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
@@ -168,15 +172,23 @@ export async function refreshAccessToken(
   });
 
   if (response.status === 400 || response.status === 401) {
-    throw new Error(`${GRANT_REVOKED}: Google refused the refresh token (${response.status})`);
+    throw new Error(
+      `${GRANT_REVOKED}: Google refused the refresh token (${response.status})`,
+    );
   }
   if (!response.ok) {
     throw new Error(`Google token refresh failed (${response.status})`);
   }
 
-  const body = (await response.json()) as { access_token?: string; expires_in?: number };
+  const body = (await response.json()) as {
+    access_token?: string;
+    expires_in?: number;
+  };
   if (!body.access_token) {
     throw new Error('Google token refresh returned no access_token');
   }
-  return { accessToken: body.access_token, expiresInSeconds: body.expires_in ?? 0 };
+  return {
+    accessToken: body.access_token,
+    expiresInSeconds: body.expires_in ?? 0,
+  };
 }

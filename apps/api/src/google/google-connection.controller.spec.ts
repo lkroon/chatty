@@ -13,16 +13,23 @@ describe('GoogleConnectionController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new GoogleConnectionController(connections as never, tokens as never);
+    controller = new GoogleConnectionController(
+      connections as never,
+      tokens as never,
+    );
   });
 
   it('status() rejects a request with no session account', async () => {
-    await expect(controller.status(fakeRequest({}))).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(controller.status(fakeRequest({}))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('status() reports not connected when there is no row', async () => {
     connections.find.mockResolvedValue(null);
-    await expect(controller.status(fakeRequest({ accountId: '1' }))).resolves.toEqual({
+    await expect(
+      controller.status(fakeRequest({ accountId: '1' })),
+    ).resolves.toEqual({
       connected: false,
       scopes: [],
       needsReconnect: false,
@@ -30,8 +37,14 @@ describe('GoogleConnectionController', () => {
   });
 
   it('status() reports the granted scopes when connected', async () => {
-    connections.find.mockResolvedValue({ accountId: 1, refreshTokenSealed: 'x', scopes: ['a'] });
-    await expect(controller.status(fakeRequest({ accountId: '1' }))).resolves.toEqual({
+    connections.find.mockResolvedValue({
+      accountId: 1,
+      refreshTokenSealed: 'x',
+      scopes: ['a'],
+    });
+    await expect(
+      controller.status(fakeRequest({ accountId: '1' })),
+    ).resolves.toEqual({
       connected: true,
       scopes: ['a'],
       needsReconnect: false,
@@ -61,9 +74,9 @@ describe('GoogleConnectionController', () => {
         refreshTokenSealed: 'x',
         scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
       });
-      await expect(controller.status(fakeRequest({ accountId: '1' }))).resolves.toEqual(
-        expect.objectContaining({ needsReconnect: true }),
-      );
+      await expect(
+        controller.status(fakeRequest({ accountId: '1' })),
+      ).resolves.toEqual(expect.objectContaining({ needsReconnect: true }));
     });
 
     it('does not flag a current connection', async () => {
@@ -72,9 +85,9 @@ describe('GoogleConnectionController', () => {
         refreshTokenSealed: 'x',
         scopes: ['https://www.googleapis.com/auth/gmail.modify'],
       });
-      await expect(controller.status(fakeRequest({ accountId: '1' }))).resolves.toEqual(
-        expect.objectContaining({ needsReconnect: false }),
-      );
+      await expect(
+        controller.status(fakeRequest({ accountId: '1' })),
+      ).resolves.toEqual(expect.objectContaining({ needsReconnect: false }));
     });
   });
 

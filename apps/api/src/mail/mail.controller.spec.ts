@@ -31,12 +31,18 @@ describe('MailController', () => {
   });
 
   it('refuses a request with no session account', async () => {
-    await expect(controller.read(req(), 'm1')).rejects.toThrow(UnauthorizedException);
+    await expect(controller.read(req(), 'm1')).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('surfaces a stale grant as Forbidden', async () => {
-    service.archive.mockRejectedValue(new ForbiddenException('google_scope_missing'));
-    await expect(controller.archive(req('7'), 'm1')).rejects.toThrow(ForbiddenException);
+    service.archive.mockRejectedValue(
+      new ForbiddenException('google_scope_missing'),
+    );
+    await expect(controller.archive(req('7'), 'm1')).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   /**
@@ -45,7 +51,10 @@ describe('MailController', () => {
    * is ever added upstream, that stops being true and this fails.
    */
   it('is not exposed to the model as a tool', () => {
-    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual(['web_search', 'web_fetch']);
+    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual([
+      'web_search',
+      'web_fetch',
+    ]);
     expect(PROPOSAL_TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual([
       'create_calendar_event',
       'create_task',
