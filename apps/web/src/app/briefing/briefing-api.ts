@@ -10,6 +10,10 @@ export interface BriefingApi {
   getBriefingItems(): Observable<BriefingItems>;
   /** Marks one Google task complete. Idempotent. */
   completeTask(id: string): Observable<void>;
+  /** Removes the UNREAD label. Idempotent. */
+  markMailRead(id: string): Observable<void>;
+  /** Removes INBOX and UNREAD — Gmail's own archive. Idempotent. */
+  archiveMail(id: string): Observable<void>;
   getGoogleStatus(): Observable<GoogleConnectionStatus>;
   disconnectGoogle(): Observable<void>;
 }

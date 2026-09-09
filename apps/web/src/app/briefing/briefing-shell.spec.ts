@@ -46,7 +46,7 @@ const CONNECTED: Briefing = {
 
 class StubApi implements BriefingApi {
   briefing: Briefing = CONNECTED;
-  status: GoogleConnectionStatus = { connected: true, scopes: [] };
+  status: GoogleConnectionStatus = { connected: true, scopes: [], needsReconnect: false };
   failBriefing = false;
   /** Consumed by the next getBriefing() call only, then resets itself. */
   failNextBriefing = false;
@@ -73,6 +73,15 @@ class StubApi implements BriefingApi {
       return throwError(() => new Error('boom'));
     }
     this.completed.push(id);
+    return of(undefined);
+  }
+  mailActions: Array<{ id: string; action: string }> = [];
+  markMailRead(id: string) {
+    this.mailActions.push({ id, action: 'read' });
+    return of(undefined);
+  }
+  archiveMail(id: string) {
+    this.mailActions.push({ id, action: 'archive' });
     return of(undefined);
   }
   getGoogleStatus() {
@@ -518,5 +527,34 @@ describe('BriefingShell', () => {
     api.briefing = { ...CONNECTED, mailHasMore: true };
     const el = setup(api);
     expect(el.textContent).toContain('More unread in Gmail');
+  });
+  it('renders read and archive controls on a mail row', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      mail: {
+        status: 'ok',
+        items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
+      },
+    };
+    const el = setup(api);
+    expect(el.querySelector('[data-testid="read-m1"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="archive-m1"]')).toBeTruthy();
+  });
+
+  it('removes the row and calls archive', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      mail: {
+        status: 'ok',
+        items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
+      },
+    };
+    const el = setup(api);
+    (el.querySelector('[data-testid="archive-m1"]') as HTMLButtonElement).click();
+    expect(api.mailActions).toEqual([{ id: 'm1', action: 'archive' }]);
   });
 });

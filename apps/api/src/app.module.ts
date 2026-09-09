@@ -10,6 +10,7 @@ import { GoogleModule } from './google/google.module';
 import { BriefingModule } from './briefing/briefing.module';
 import { ProposalsModule } from './proposals/proposals.module';
 import { TasksModule } from './tasks/tasks.module';
+import { MailModule } from './mail/mail.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -23,6 +24,7 @@ import { HealthController } from './health/health.controller';
     BriefingModule,
     ProposalsModule,
     TasksModule,
+    MailModule,
     // Serves the Angular build (copied into apps/api/public by workstream
     // F's Dockerfile). Registered LAST so its SPA fallback route doesn't
     // shadow /api and /auth routes registered above.

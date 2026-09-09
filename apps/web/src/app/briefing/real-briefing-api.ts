@@ -30,6 +30,22 @@ export class RealBriefingApi implements BriefingApi {
     );
   }
 
+  markMailRead(id: string): Observable<void> {
+    return this.mailAction(id, 'read');
+  }
+
+  archiveMail(id: string): Observable<void> {
+    return this.mailAction(id, 'archive');
+  }
+
+  private mailAction(id: string, action: 'read' | 'archive'): Observable<void> {
+    return from(
+      this.request(`/api/mail/${encodeURIComponent(id)}/${action}`, { method: 'POST' }).then(
+        () => undefined,
+      ),
+    );
+  }
+
   getGoogleStatus(): Observable<GoogleConnectionStatus> {
     return from(this.getJson<GoogleConnectionStatus>('/api/google/status'));
   }
