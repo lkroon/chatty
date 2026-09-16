@@ -17,6 +17,14 @@ const TODAY_ISO = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 }).format(new Date());
 
+/** The label the shell puts on a folded day, e.g. `Thu 17`. */
+function weekdayLabel(isoDate: string): string {
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(
+    new Date(`${isoDate}T12:00:00`),
+  );
+  return `${weekday} ${Number(isoDate.slice(8, 10))}`;
+}
+
 /** `YYYY-MM-DD` n days after the fixture's today. */
 function isoPlus(days: number): string {
   const date = new Date(`${TODAY_ISO}T00:00:00Z`);
@@ -400,7 +408,8 @@ describe('BriefingShell', () => {
 
     // Closed: the title is on the fold line as a preview, not as a row.
     const fold = el.querySelector('[data-testid="day-' + tomorrow + '"]') as HTMLButtonElement;
-    expect(fold.textContent).toContain('Tomorrow');
+    // Labelled by its own date, like every other day in the list.
+    expect(fold.textContent).toContain(weekdayLabel(tomorrow));
     expect(fold.textContent).toContain('Dentist');
     expect(fold.getAttribute('aria-expanded')).toBe('false');
     expect(el.querySelectorAll('.row--later').length).toBe(0);
