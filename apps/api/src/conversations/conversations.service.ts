@@ -220,7 +220,7 @@ export class ConversationsService implements ConversationStore {
           ne(messages.id, input.excludeMessageId),
         ),
       )
-      .orderBy(messages.createdAt, messages.id);
+      .orderBy(messages.sequence);
 
     return rows.map((row) => ({
       role: row.role as 'user' | 'assistant',
@@ -277,7 +277,7 @@ export class ConversationsService implements ConversationStore {
       })
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(messages.createdAt, messages.id);
+      .orderBy(messages.sequence);
 
     const toolCallsByMessageId = await this.loadToolCallsByMessageId(
       rows.map((row) => row.id),

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  bigserial,
   date,
   index,
   integer,
@@ -50,6 +51,7 @@ export const messages = pgTable(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
+    sequence: bigserial('sequence', { mode: 'number' }).notNull(),
     conversationId: uuid('conversation_id').references(() => conversations.id, {
       onDelete: 'cascade',
     }),
