@@ -12,7 +12,7 @@ import { OpencodeService } from '../opencode/opencode.service';
 import { GoogleTokenService } from '../google/google-token.service';
 import { NotConnectedError } from '../google/errors';
 import { ProposalsService } from '../proposals/proposals.service';
-import { fetchTodaysEvents } from './calendar-source';
+import { fetchAgendaEvents } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
 import { fetchDueTasks } from './tasks-source';
 
@@ -20,7 +20,7 @@ export const CALENDAR_FETCHER = 'CALENDAR_FETCHER';
 export const GMAIL_FETCHER = 'GMAIL_FETCHER';
 export const TASKS_FETCHER = 'TASKS_FETCHER';
 
-export type CalendarFetcher = typeof fetchTodaysEvents;
+export type CalendarFetcher = typeof fetchAgendaEvents;
 export type GmailFetcher = typeof fetchRecentMail;
 export type TasksFetcher = typeof fetchDueTasks;
 
@@ -182,7 +182,11 @@ export class BriefingService {
     taskSection: BriefingSection<BriefingTask>,
     mail: BriefingSection<BriefingMail>,
   ): Promise<string> {
-    const events = calendar.status === 'ok' ? calendar.items : [];
+    // Only today's events. The agenda now runs three days, but the summary
+    // is about the day the user is in — a paragraph that wanders into Friday
+    // buries the thing they opened the app to read.
+    const events =
+      calendar.status === 'ok' ? calendar.items.filter((e) => e.date === date) : [];
     const tasks = taskSection.status === 'ok' ? taskSection.items : [];
     const mails = mail.status === 'ok' ? mail.items : [];
     if (events.length === 0 && tasks.length === 0 && mails.length === 0) {

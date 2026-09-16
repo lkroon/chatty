@@ -1,5 +1,5 @@
 import type { ProposalCard } from '@contracts/proposal';
-import { BriefingService } from './briefing.service';
+import { BriefingService, todayInZone } from './briefing.service';
 import { NotConnectedError } from '../google/errors';
 import type { OpencodeStreamChunk } from '../opencode/opencode-client.types';
 
@@ -46,6 +46,10 @@ describe('BriefingService', () => {
   let proposals: FakeProposals;
   let service: BriefingService;
 
+  // The service dates the briefing from the clock, so fixtures that have to
+  // line up with "today" are built from the same function it uses.
+  const today = todayInZone('Europe/Amsterdam');
+
   beforeEach(() => {
     process.env.BRIEFING_TIMEZONE = 'Europe/Amsterdam';
     tokens = { getAccessToken: jest.fn().mockResolvedValue('at') };
@@ -58,18 +62,17 @@ describe('BriefingService', () => {
         ] as OpencodeStreamChunk[]),
       ),
     };
-    calendar = jest
-      .fn()
-      .mockResolvedValue([
-        {
-          id: 'e1',
-          title: 'Standup',
-          start: '2026-09-05T09:00:00+02:00',
-          end: null,
-          allDay: false,
-          location: null,
-        },
-      ]);
+    calendar = jest.fn().mockResolvedValue([
+      {
+        id: 'e1',
+        title: 'Standup',
+        date: today,
+        start: `${today}T09:00:00+02:00`,
+        end: null,
+        allDay: false,
+        location: null,
+      },
+    ]);
     gmail = jest.fn().mockResolvedValue({
       items: [
         {
@@ -102,6 +105,45 @@ describe('BriefingService', () => {
       tasksFetcher,
       proposals as never,
     );
+  });
+
+  it('summarizes today only, not the rest of the agenda window', async () => {
+    const friday = new Date(`${today}T00:00:00Z`);
+    friday.setUTCDate(friday.getUTCDate() + 2);
+    const dayAfter = friday.toISOString().slice(0, 10);
+    calendar.mockResolvedValue([
+      {
+        id: 'e1',
+        title: 'Standup',
+        date: today,
+        start: `${today}T09:00:00+02:00`,
+        end: null,
+        allDay: false,
+        location: null,
+      },
+      {
+        id: 'e2',
+        title: 'Flight to Oslo',
+        date: dayAfter,
+        start: `${dayAfter}T16:30:00+02:00`,
+        end: null,
+        allDay: false,
+        location: null,
+      },
+    ]);
+
+    const briefing = await service.build(1, 'glm-5.3-flash');
+
+    // Both events still reach the screen...
+    expect(briefing.calendar).toEqual({
+      status: 'ok',
+      items: [expect.objectContaining({ id: 'e1' }), expect.objectContaining({ id: 'e2' })],
+    });
+    // ...but only today's reaches the model.
+    const [{ messages }] = opencode.streamChatCompletion.mock.calls[0];
+    const payload = messages[1].content as string;
+    expect(payload).toContain('Standup');
+    expect(payload).not.toContain('Flight to Oslo');
   });
 
   it('returns both sections and the summary', async () => {

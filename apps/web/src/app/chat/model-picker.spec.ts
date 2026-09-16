@@ -83,6 +83,25 @@ describe('ModelPicker', () => {
     expect(select.value).toBe('glm-5.3-flash');
   });
 
+  it('draws the selected label itself, so the top bar sets its own type size', () => {
+    // The native <select> stays at 16px to keep iOS from zooming the page on
+    // focus, so the size the user actually reads has to come from elsewhere.
+    setup([
+      { id: 'deepseek-v4-pro', label: 'deepseek-v4-pro', family: 'x' },
+      { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'x' },
+    ]);
+    const el: HTMLElement = fixture.nativeElement;
+    const value = el.querySelector('.model-picker__value') as HTMLElement;
+    expect(value.textContent?.trim()).toBe('glm-5.3-flash');
+
+    const select: HTMLSelectElement = el.querySelector('select')!;
+    select.value = 'deepseek-v4-pro';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(value.textContent?.trim()).toBe('deepseek-v4-pro');
+  });
+
   it('toggles the icon when the selection changes to a different model', () => {
     setup([
       { id: 'a', label: 'a', family: 'x', toolCapable: false },

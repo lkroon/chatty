@@ -17,6 +17,13 @@ const TODAY_ISO = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 }).format(new Date());
 
+/** `YYYY-MM-DD` n days after the fixture's today. */
+function isoPlus(days: number): string {
+  const date = new Date(`${TODAY_ISO}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 const CONNECTED: Briefing = {
   date: TODAY_ISO,
   timeZone: 'Europe/Amsterdam',
@@ -27,7 +34,8 @@ const CONNECTED: Briefing = {
       {
         id: 'e1',
         title: 'Standup',
-        start: '2026-09-05T09:00:00+02:00',
+        date: TODAY_ISO,
+        start: `${TODAY_ISO}T09:00:00+02:00`,
         end: null,
         allDay: false,
         location: null,
@@ -283,7 +291,8 @@ describe('BriefingShell', () => {
           {
             id: 'e1',
             title: 'Standup',
-            start: '2026-09-05T09:00:00+02:00',
+            date: TODAY_ISO,
+            start: `${TODAY_ISO}T09:00:00+02:00`,
             end: null,
             allDay: false,
             location: null,
@@ -291,7 +300,8 @@ describe('BriefingShell', () => {
           {
             id: 'e2',
             title: 'Follow-up',
-            start: '2026-09-05T11:00:00+02:00',
+            date: TODAY_ISO,
+            start: `${TODAY_ISO}T11:00:00+02:00`,
             end: null,
             allDay: false,
             location: null,
@@ -331,7 +341,8 @@ describe('BriefingShell', () => {
           {
             id: 'e1',
             title: 'Standup',
-            start: '2026-09-05T09:00:00+02:00',
+            date: TODAY_ISO,
+            start: `${TODAY_ISO}T09:00:00+02:00`,
             end: null,
             allDay: false,
             location: null,
@@ -339,7 +350,8 @@ describe('BriefingShell', () => {
           {
             id: 'e2',
             title: 'Follow-up',
-            start: '2026-09-05T11:00:00+02:00',
+            date: TODAY_ISO,
+            start: `${TODAY_ISO}T11:00:00+02:00`,
             end: null,
             allDay: false,
             location: null,
@@ -360,6 +372,80 @@ describe('BriefingShell', () => {
     expect(button.textContent?.trim()).toBe('↻');
     expect(el.textContent).toContain('Follow-up');
     localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
+  it('folds the days after today, opening one on tap', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    const tomorrow = isoPlus(1);
+    api.briefing = {
+      ...CONNECTED,
+      calendar: {
+        status: 'ok',
+        items: [
+          ...(CONNECTED.calendar.status === 'ok' ? CONNECTED.calendar.items : []),
+          {
+            id: 'e2',
+            title: 'Dentist',
+            date: tomorrow,
+            start: `${tomorrow}T08:45:00+02:00`,
+            end: null,
+            allDay: false,
+            location: null,
+          },
+        ],
+      },
+    };
+    const el = setup(api);
+
+    // Closed: the title is on the fold line as a preview, not as a row.
+    const fold = el.querySelector('[data-testid="day-' + tomorrow + '"]') as HTMLButtonElement;
+    expect(fold.textContent).toContain('Tomorrow');
+    expect(fold.textContent).toContain('Dentist');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelectorAll('.row--later').length).toBe(0);
+
+    fold.click();
+    currentFixture.detectChanges();
+
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    const rows = Array.from(el.querySelectorAll('.row--later')).map((r) => r.textContent);
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toContain('Dentist');
+  });
+
+  it('shows an empty day as a line that cannot be opened', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const el = setup(new StubApi());
+    const fold = el.querySelector('[data-testid="day-' + isoPlus(1) + '"]') as HTMLButtonElement;
+    expect(fold.textContent).toContain('Nothing scheduled');
+    expect(fold.disabled).toBe(true);
+    expect(fold.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  it('splits tasks into due and undated groups, each with its count', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [
+          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: true, notes: null },
+          { id: 't2', title: 'Pay invoice', due: TODAY_ISO, overdue: false, notes: null },
+          { id: 't3', title: 'Book Oslo hotel', due: null, overdue: false, notes: null },
+        ],
+      },
+    };
+    const el = setup(api);
+
+    const heads = Array.from(el.querySelectorAll('.grouphead')).map((h) =>
+      (h.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    );
+    expect(heads).toEqual(['Due · 2', 'No due date · 1']);
+    // The heading carries the date now, so only lateness stays on the row.
+    expect(el.textContent).toContain('Overdue');
+    expect(el.textContent).not.toContain('No due date · 1 Book Oslo hotel No due date');
   });
 
   it('renders due tasks with a complete control', () => {

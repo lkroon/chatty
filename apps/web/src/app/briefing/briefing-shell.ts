@@ -1,8 +1,9 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
+import { AGENDA_DAY_COUNT, type Briefing, type BriefingEvent, type ProposalCard, type ProposalKind } from '@contracts';
 
 import { itemFingerprint, readBriefingCache, writeBriefingCache } from '../core/briefing-cache';
 import { renderMarkdownToHtml } from '../core/markdown';
@@ -31,7 +32,7 @@ const UNDO_WINDOW_MS = 6000;
  */
 @Component({
   selector: 'app-briefing-shell',
-  imports: [ChattyLogo, ThemeToggle, TodayChatSwitch],
+  imports: [NgTemplateOutlet, ChattyLogo, ThemeToggle, TodayChatSwitch],
   providers: [{ provide: BRIEFING_API, useClass: RealBriefingApi }],
   template: `
     <div class="shell">
@@ -133,7 +134,7 @@ const UNDO_WINDOW_MS = 6000;
               <h2>Agenda</h2>
               @switch (b.calendar.status) {
                 @case ('ok') {
-                  @for (event of b.calendar.items; track event.id) {
+                  @for (event of todaysEvents(); track event.id) {
                     <div class="row">
                       <span class="row__time">{{
                         event.allDay ? 'All day' : formatTime(event.start)
@@ -142,6 +143,41 @@ const UNDO_WINDOW_MS = 6000;
                     </div>
                   } @empty {
                     <p class="hint">Nothing scheduled.</p>
+                  }
+                  <!--
+                    Today in full, the days after it folded to a line each.
+                    The line carries a count and the first titles, so a closed
+                    day still answers "is there anything I need to know about
+                    tomorrow" without being opened.
+                  -->
+                  @for (day of laterDays(); track day.date) {
+                    <button
+                      type="button"
+                      class="fold"
+                      [attr.data-testid]="'day-' + day.date"
+                      [disabled]="!day.events.length"
+                      [attr.aria-expanded]="day.events.length ? isDayOpen(day.date) : null"
+                      (click)="toggleDay(day.date)"
+                    >
+                      <span class="fold__chev" aria-hidden="true">{{
+                        day.events.length ? (isDayOpen(day.date) ? '▾' : '▸') : '·'
+                      }}</span>
+                      <span class="fold__label">{{ day.label }}</span>
+                      <span class="fold__preview">{{ day.preview }}</span>
+                      @if (day.events.length) {
+                        <span class="fold__count">{{ day.events.length }}</span>
+                      }
+                    </button>
+                    @if (isDayOpen(day.date)) {
+                      @for (event of day.events; track event.id) {
+                        <div class="row row--later">
+                          <span class="row__time">{{
+                            event.allDay ? 'All day' : formatTime(event.start)
+                          }}</span>
+                          <span class="row__title">{{ event.title }}</span>
+                        </div>
+                      }
+                    }
                   }
                 }
                 @case ('error') {
@@ -154,36 +190,28 @@ const UNDO_WINDOW_MS = 6000;
               <h2>Tasks</h2>
               @switch (b.tasks.status) {
                 @case ('ok') {
-                  @for (task of visibleTasks(); track task.id) {
-                    <div class="task">
-                      <button
-                        type="button"
-                        class="task__tick"
-                        [attr.data-testid]="'complete-' + task.id"
-                        (click)="completeTask(task.id)"
-                        [attr.aria-label]="'Complete ' + task.title"
-                      >
-                        ○
-                      </button>
-                      <span class="task__body">
-                        <span class="task__title">{{ task.title }}</span>
-                        @if (task.overdue) {
-                          <span class="task__due">Overdue · {{ task.due }}</span>
-                        } @else if (!task.due) {
-                          <span class="task__due">No due date</span>
-                        }
-                      </span>
-                      <button
-                        type="button"
-                        class="task__dismiss"
-                        [attr.data-testid]="'dismiss-' + task.id"
-                        (click)="dismissTask(task.id)"
-                        [attr.aria-label]="'Hide ' + task.title"
-                      >
-                        ×
-                      </button>
+                  <!--
+                    Two groups under one heading each, rather than a date on
+                    every row: the heading is what tells you which kind of
+                    task you are looking at, so only lateness stays per-row.
+                  -->
+                  @if (dueTasks().length) {
+                    <div class="grouphead grouphead--now">
+                      Due <span class="grouphead__count">· {{ dueTasks().length }}</span>
                     </div>
-                  } @empty {
+                    @for (task of dueTasks(); track task.id) {
+                      <ng-container *ngTemplateOutlet="taskRow; context: { $implicit: task }" />
+                    }
+                  }
+                  @if (undatedTasks().length) {
+                    <div class="grouphead" [class.grouphead--ruled]="dueTasks().length">
+                      No due date <span class="grouphead__count">· {{ undatedTasks().length }}</span>
+                    </div>
+                    @for (task of undatedTasks(); track task.id) {
+                      <ng-container *ngTemplateOutlet="taskRow; context: { $implicit: task }" />
+                    }
+                  }
+                  @if (!visibleTasks().length) {
                     <p class="hint">No tasks waiting.</p>
                   }
                 }
@@ -252,6 +280,39 @@ const UNDO_WINDOW_MS = 6000;
         </div>
       }
     </div>
+
+    <!--
+      One row, used by both task groups. A second copy of this markup is the
+      only alternative, and the two would drift.
+    -->
+    <ng-template #taskRow let-task>
+      <div class="task">
+        <button
+          type="button"
+          class="task__tick"
+          [attr.data-testid]="'complete-' + task.id"
+          (click)="completeTask(task.id)"
+          [attr.aria-label]="'Complete ' + task.title"
+        >
+          ○
+        </button>
+        <span class="task__body">
+          <span class="task__title">{{ task.title }}</span>
+          @if (task.overdue) {
+            <span class="task__due">Overdue · {{ task.due }}</span>
+          }
+        </span>
+        <button
+          type="button"
+          class="task__dismiss"
+          [attr.data-testid]="'dismiss-' + task.id"
+          (click)="dismissTask(task.id)"
+          [attr.aria-label]="'Hide ' + task.title"
+        >
+          ×
+        </button>
+      </div>
+    </ng-template>
   `,
   styles: `
     :host {
@@ -349,6 +410,78 @@ const UNDO_WINDOW_MS = 6000;
     .row__title {
       flex: 1;
       min-width: 0;
+    }
+    /* An opened day sits under its own line, indented so the eye can tell it
+       from today's rows without a second heading. */
+    .row--later {
+      padding-left: 0.9rem;
+      color: var(--oc-text-muted);
+    }
+    /* Mono, like the card headings: these label a group the app assembled. */
+    .grouphead {
+      display: flex;
+      align-items: baseline;
+      gap: 0.3rem;
+      margin: 0.15rem 0;
+      font-family: var(--font-meta);
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--oc-text-muted);
+    }
+    .grouphead--now {
+      color: var(--oc-accent-ink);
+    }
+    .grouphead--ruled {
+      border-top: 1px solid var(--oc-rule);
+      padding-top: 0.55rem;
+      margin-top: 0.5rem;
+    }
+    .grouphead__count {
+      font-weight: 400;
+      opacity: 0.8;
+    }
+    .fold {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      width: 100%;
+      min-height: 44px;
+      padding: 0.3rem 0;
+      border: none;
+      border-top: 1px solid var(--oc-rule);
+      background: none;
+      font: inherit;
+      font-size: 0.9rem;
+      text-align: left;
+      color: var(--oc-text-muted);
+      cursor: pointer;
+    }
+    .fold:disabled {
+      cursor: default;
+    }
+    .fold__chev {
+      flex-shrink: 0;
+      width: 0.9rem;
+      font-size: 0.75rem;
+    }
+    .fold__label {
+      flex-shrink: 0;
+      color: var(--oc-text);
+    }
+    .fold__preview {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fold__count {
+      flex-shrink: 0;
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
     }
     .hint {
       margin: 0;
@@ -716,6 +849,73 @@ export class BriefingShell {
     });
   }
 
+  /**
+   * Days after today that the agenda covers, each with the events on it.
+   *
+   * Built from the briefing's own date rather than the browser clock, and
+   * always `AGENDA_DAY_COUNT - 1` entries long: a day with nothing on it
+   * still gets a line, because "nothing tomorrow" is an answer.
+   */
+  protected readonly laterDays = computed<AgendaDay[]>(() => {
+    const current = this.briefing();
+    if (!current || current.calendar.status !== 'ok') {
+      return [];
+    }
+    const events = current.calendar.items;
+    const days: AgendaDay[] = [];
+    for (let offset = 1; offset < AGENDA_DAY_COUNT; offset++) {
+      const date = addDays(current.date, offset);
+      const onDay = events.filter((event) => event.date === date);
+      days.push({
+        date,
+        label: offset === 1 ? 'Tomorrow' : weekdayLabel(date),
+        events: onDay,
+        preview: onDay.length
+          ? onDay
+              .slice(0, 2)
+              .map((event) => event.title)
+              .join(', ')
+          : 'Nothing scheduled',
+      });
+    }
+    return days;
+  });
+
+  protected readonly todaysEvents = computed<BriefingEvent[]>(() => {
+    const current = this.briefing();
+    if (!current || current.calendar.status !== 'ok') {
+      return [];
+    }
+    return current.calendar.items.filter((event) => event.date === current.date);
+  });
+
+  /**
+   * Days the user opened. Deliberately not cached to disk: a day left open
+   * yesterday says nothing about today, and Today should open the same way
+   * every morning.
+   */
+  private readonly openDays = signal<string[]>([]);
+
+  protected isDayOpen(date: string): boolean {
+    return this.openDays().includes(date);
+  }
+
+  protected toggleDay(date: string): void {
+    this.openDays.update((open) =>
+      open.includes(date) ? open.filter((d) => d !== date) : [...open, date],
+    );
+  }
+
+  /** Tasks with a due date — today's and anything late. */
+  protected readonly dueTasks = computed(() =>
+    this.visibleTasks().filter((task) => task.due !== null),
+  );
+
+  /** Tasks Google has no date for, which is most of what chat creates. */
+  protected readonly undatedTasks = computed(() =>
+    this.visibleTasks().filter((task) => task.due === null),
+  );
+
   /** Tasks minus the ones dismissed locally. */
   protected readonly visibleTasks = computed(() => {
     const section = this.briefing()?.tasks;
@@ -867,6 +1067,30 @@ export class BriefingShell {
     const match = /T(\d{2}:\d{2})/.exec(iso);
     return match ? match[1] : '';
   }
+}
+
+interface AgendaDay {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  /** "Tomorrow", or "Fri 18" for the days after it. */
+  label: string;
+  events: BriefingEvent[];
+  /** The first titles on the day, so a closed line still says something. */
+  preview: string;
+}
+
+/** Pure string arithmetic on a `YYYY-MM-DD`, so no zone is involved. */
+function addDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** `2026-09-18` -> `Fri 18`. Noon, so no zone shift can move the weekday. */
+function weekdayLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T12:00:00`);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
+  return `${weekday} ${Number(isoDate.slice(8, 10))}`;
 }
 
 /**

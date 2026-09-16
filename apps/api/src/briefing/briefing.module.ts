@@ -9,7 +9,7 @@ import {
   GMAIL_FETCHER,
   TASKS_FETCHER,
 } from './briefing.service';
-import { fetchTodaysEvents } from './calendar-source';
+import { fetchAgendaEvents } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
 import { fetchDueTasks } from './tasks-source';
 
@@ -21,7 +21,7 @@ import { fetchDueTasks } from './tasks-source';
   controllers: [BriefingController],
   providers: [
     BriefingService,
-    { provide: CALENDAR_FETCHER, useValue: fetchTodaysEvents },
+    { provide: CALENDAR_FETCHER, useValue: fetchAgendaEvents },
     { provide: GMAIL_FETCHER, useValue: fetchRecentMail },
     { provide: TASKS_FETCHER, useValue: fetchDueTasks },
   ],
