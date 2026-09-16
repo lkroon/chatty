@@ -1,4 +1,6 @@
-import { Controller, Get, HttpCode } from '@nestjs/common';
+import { Controller, Get, HttpCode, Inject } from '@nestjs/common';
+import { Pool } from 'pg';
+import { PG_POOL } from '../db/tokens';
 
 // Unauthenticated liveness/readiness probes. Routes are registered
 // outside the global 'api' prefix via app.setGlobalPrefix's `exclude`
@@ -6,6 +8,8 @@ import { Controller, Get, HttpCode } from '@nestjs/common';
 // /api/healthz). No dependency checks yet for Wave 0.
 @Controller()
 export class HealthController {
+  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+
   @Get('healthz')
   @HttpCode(200)
   healthz() {
@@ -14,7 +18,14 @@ export class HealthController {
 
   @Get('readyz')
   @HttpCode(200)
-  readyz() {
+  async readyz() {
+    const client = await this.pool.connect();
+    try {
+      await client.query("SET statement_timeout = '2s'");
+      await client.query('SELECT 1');
+    } finally {
+      client.release();
+    }
     return { status: 'ok' };
   }
 }

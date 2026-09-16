@@ -10,7 +10,7 @@ import { Composer } from './composer';
 
 class StubChatApi implements ChatApi {
   listModels() {
-    return of([]);
+    return of([{ id: 'model-a', label: 'Model A', family: 'test' }]);
   }
   listConversations() {
     return of([]);

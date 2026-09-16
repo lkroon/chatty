@@ -7,6 +7,7 @@ import { ChatModule } from './chat.module';
 import { CONVERSATION_STORE } from './conversation-store';
 import { InMemoryConversationStore } from './in-memory-conversation-store';
 import { InMemoryUsageService, USAGE_SERVICE } from './in-memory-usage-service';
+import { OpencodeService } from '../opencode/opencode.service';
 
 /**
  * End-to-end proof (real Node HTTP servers on both ends, no mocks) that
@@ -113,6 +114,10 @@ describe('POST /chat (real HTTP end to end, fake upstream)', () => {
       .useClass(InMemoryUsageService)
       .compile();
 
+    moduleRef.get(OpencodeService).getModels = () => [
+      { id: 'glm-5.3', label: 'glm-5.3', family: 'test' },
+    ];
+
     const app = moduleRef.createNestApplication<NestExpressApplication>();
     // Stand-in for express-session + workstream B's guard, neither of
     // which this module depends on directly — only req.session.accountId
@@ -140,9 +145,9 @@ describe('POST /chat (real HTTP end to end, fake upstream)', () => {
       // arrived (not one buffered lump), spaced out in time matching the
       // fake upstream's staggered writes.
       expect(chunks.length).toBeGreaterThanOrEqual(3);
-      expect(arrivedAt[arrivedAt.length - 1] - arrivedAt[0]).toBeGreaterThanOrEqual(
-        40,
-      );
+      expect(
+        arrivedAt[arrivedAt.length - 1] - arrivedAt[0],
+      ).toBeGreaterThanOrEqual(40);
 
       const full = chunks.join('');
       const frames = full
@@ -175,4 +180,43 @@ describe('POST /chat (real HTTP end to end, fake upstream)', () => {
       await fake.close();
     }
   }, 15000);
+
+  it('rejects an unknown model before consuming quota or creating an exchange', async () => {
+    const usage = new InMemoryUsageService();
+    const store = new InMemoryConversationStore();
+    const moduleRef = await Test.createTestingModule({ imports: [ChatModule] })
+      .overrideProvider(CONVERSATION_STORE)
+      .useValue(store)
+      .overrideProvider(USAGE_SERVICE)
+      .useValue(usage)
+      .overrideProvider(OpencodeService)
+      .useValue({
+        getModels: () => [{ id: 'allowed', label: 'allowed', family: 'test' }],
+      })
+      .compile();
+    const app = moduleRef.createNestApplication<NestExpressApplication>();
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as unknown as { session: { accountId?: string } }).session = {
+        accountId: 'acct-e2e',
+      };
+      next();
+    });
+    await app.init();
+    await app.listen(0);
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const result = await postAndCollectChunks(
+        `http://127.0.0.1:${address.port}`,
+        '/chat',
+        {
+          model: 'not-allowed',
+          content: 'hi',
+        },
+      );
+      expect(result.status).toBe(400);
+      expect(await usage.consume('acct-e2e')).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
+  });
 });

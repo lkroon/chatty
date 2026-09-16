@@ -192,7 +192,7 @@ export class ChatStore {
 
   send(content: string): void {
     const trimmed = content.trim();
-    if (!trimmed || this.isStreaming()) {
+    if (!trimmed || this.isStreaming() || !this.selectedModelId()) {
       return;
     }
     this.error.set(null);
@@ -219,12 +219,21 @@ export class ChatStore {
       })
       .subscribe({
         next: (event) => this.handleEvent(event),
-        error: () => {
-          this.isStreaming.set(false);
-          this.streamingText.set('');
-          this.error.set('Something went wrong sending that message. Please try again.');
+        error: () => this.failStream(),
+        complete: () => {
+          if (this.isStreaming()) {
+            this.failStream();
+          }
         },
       });
+  }
+
+  private failStream(): void {
+    this.isStreaming.set(false);
+    this.streamingText.set('');
+    this.streamingToolCalls.set([]);
+    this.streamingThinking.set(false);
+    this.error.set('Something went wrong sending that message. Please try again.');
   }
 
   /** Aborts the in-flight response, if any, and resets streaming state. */

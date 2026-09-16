@@ -1,4 +1,7 @@
 import * as cheerio from 'cheerio';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import { Readable } from 'node:stream';
 import type { ToolSource } from '@contracts/chat';
 import type { ToolExecutionResult } from './tool-runtime';
 import {
@@ -35,6 +38,50 @@ const ACCEPTED_CONTENT_TYPES = [
 ];
 
 const logger = new Logger('WebFetch');
+
+function fetchPinned(
+  url: URL,
+  addresses: NonNullable<Awaited<ReturnType<typeof checkUrl>>['addresses']>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const address = addresses[0];
+    const request = (url.protocol === 'https:' ? https : http).request(
+      {
+        protocol: url.protocol,
+        hostname: address.address,
+        family: address.family,
+        port: url.port || undefined,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: {
+          Host: url.host,
+          'User-Agent': userAgent(),
+          Accept: ACCEPTED_CONTENT_TYPES.join(', '),
+        },
+        ...(url.protocol === 'https:' ? { servername: url.hostname } : {}),
+        signal,
+      },
+      (response) => {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          if (value !== undefined) {
+            headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+          }
+        }
+        resolve(
+          new Response(Readable.toWeb(response) as ReadableStream, {
+            status: response.statusCode ?? 500,
+            statusText: response.statusMessage,
+            headers,
+          }),
+        );
+      },
+    );
+    request.on('error', reject);
+    request.end();
+  });
+}
 
 function hostnameOf(rawUrl: string): string {
   try {
@@ -176,16 +223,22 @@ export async function fetchPage(
         );
       }
 
+      if (!guard.addresses?.length) {
+        return failed(
+          currentUrl,
+          'URL blocked: no validated address',
+          'blocked_url',
+        );
+      }
+
       let response: Response;
       try {
-        response = await fetch(currentUrl, {
-          redirect: 'manual',
-          signal: timeoutController.signal,
-          headers: {
-            'User-Agent': userAgent(),
-            Accept: ACCEPTED_CONTENT_TYPES.join(', '),
-          },
-        });
+        const url = new URL(currentUrl);
+        response = await fetchPinned(
+          url,
+          guard.addresses,
+          timeoutController.signal,
+        );
       } catch (err) {
         return failed(
           currentUrl,
