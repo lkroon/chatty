@@ -177,7 +177,12 @@ export class ChatService {
           break;
         }
 
-        const sendTools = toolsOffered && rounds < MAX_TOOL_ROUNDS;
+        // `budget.failuresExhausted` is the second ceiling alongside
+        // MAX_TOOL_ROUNDS: rounds bound how long the model may work, this
+        // bounds how long it may keep failing. Once it trips, the round is
+        // sent with no `tools` key and the model has to answer.
+        const sendTools =
+          toolsOffered && rounds < MAX_TOOL_ROUNDS && !budget.failuresExhausted;
         let roundText = '';
         let emittedThinking = false;
         let finishReason: string | null = null;
@@ -253,7 +258,11 @@ export class ChatService {
             label: provisionalLabel(call.name),
             sources: [],
           };
-          chips.push(runningChip);
+          // Position, not a callId lookup: two calls in one exchange can
+          // share an id (or carry none) when the upstream omits them, and
+          // a findIndex miss returns -1, which writes chips[-1] into
+          // nowhere and leaves the chip stuck on 'running' forever.
+          const chipIndex = chips.push(runningChip) - 1;
           emit({ type: 'tool', chip: runningChip });
 
           const result = await this.toolRuntime.execute(
@@ -270,8 +279,7 @@ export class ChatService {
             sources: result.sources,
             ...(result.proposal ? { proposal: result.proposal } : {}),
           };
-          const index = chips.findIndex((c) => c.callId === call.id);
-          chips[index] = finishedChip;
+          chips[chipIndex] = finishedChip;
           emit({ type: 'tool', chip: finishedChip });
 
           messages.push({

@@ -73,6 +73,15 @@ function frameUntrusted(content: string): string {
   ].join('\n');
 }
 
+/**
+ * Appended to the last failure an exchange is allowed. The chat loop stops
+ * sending `tools` from here on, so this is not a request the model may
+ * decline — it is notice of what has already been taken away.
+ */
+const TOOLS_WITHDRAWN =
+  'Too many tool calls have failed in this exchange, so no more will be offered. ' +
+  'Answer now with what you already have, and say plainly which part you could not verify.';
+
 /** What the model is told after a proposal is stored. It has NOT happened yet. */
 function proposedNotice(title: string): string {
   return [
@@ -109,6 +118,17 @@ export class ToolRuntimeImpl implements ToolRuntime {
   ): Promise<ToolExecutionResult> {
     try {
       const result = await this.dispatch(call, budget, signal, actor);
+      if (result.status === 'failed') {
+        // Counted here rather than at each failure site so that every path
+        // — bad arguments, blocked URL, provider down, unknown tool — is
+        // charged exactly once, including the ones added later.
+        if (!budget.recordFailure()) {
+          return {
+            ...result,
+            content: `${result.content}\n\n${TOOLS_WITHDRAWN}`,
+          };
+        }
+      }
       if (result.status === 'done' && !result.proposal) {
         // Framing is applied after the budget claim, so it can never be the
         // part that gets truncated away, and never consumes budget itself.
@@ -153,6 +173,11 @@ export class ToolRuntimeImpl implements ToolRuntime {
       const args = parseArguments(call.rawArguments);
       const url = typeof args?.url === 'string' ? args.url : null;
       if (!url) {
+        // Charged against the fetch budget even though nothing was fetched.
+        // A malformed call that costs nothing is one the model can repeat
+        // for free, which is exactly how a single bad argument turned into
+        // four identical "Couldn't run web_fetch" chips in a row.
+        budget.claimFetch();
         return invalidArguments(call.name);
       }
       return fetchPage(url, budget, signal);

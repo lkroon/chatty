@@ -38,6 +38,20 @@ export const FETCH_MAX_CHARS = 8000;
 /** Total tool output injected across the whole exchange. The real ceiling. */
 export const TOOL_TOTAL_MAX_CHARS = 20000;
 
+/**
+ * Failed tool calls tolerated in one exchange before tools stop being
+ * offered at all.
+ *
+ * MAX_TOOL_ROUNDS alone does not bound a failure loop: a model that gets a
+ * failure back has no reason not to try the same call again, and a failure
+ * that costs no fetch and no characters is free to repeat until the rounds
+ * run out. Every round it spends that way is a full re-send of the message
+ * array, and the user watches four identical "couldn't run" chips go by.
+ * Four is one wasted round's worth of parallel calls — enough to recover
+ * from a bad URL or a provider blip, not enough to spend the exchange on.
+ */
+export const MAX_TOOL_FAILURES_PER_EXCHANGE = 4;
+
 /** Per search request, in ms. */
 export const SEARCH_TIMEOUT_MS = 5000;
 
@@ -55,6 +69,21 @@ export const FETCH_MAX_BYTES = 2097152;
 export class ToolBudget {
   fetchesRemaining = MAX_FETCHES_PER_EXCHANGE;
   charsRemaining = TOOL_TOTAL_MAX_CHARS;
+  failuresRemaining = MAX_TOOL_FAILURES_PER_EXCHANGE;
+
+  /** True once this exchange has spent its failure allowance. Checked by the chat loop, which then stops offering tools. */
+  get failuresExhausted(): boolean {
+    return this.failuresRemaining <= 0;
+  }
+
+  /** Records one failed tool call. Returns false when that was the last one this exchange may spend. */
+  recordFailure(): boolean {
+    if (this.failuresRemaining <= 0) {
+      return false;
+    }
+    this.failuresRemaining -= 1;
+    return this.failuresRemaining > 0;
+  }
 
   /** Decrements and returns false when exhausted. Call before fetching, not after. */
   claimFetch(): boolean {

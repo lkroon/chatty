@@ -7,7 +7,10 @@ import {
   OpencodeStreamChunk,
 } from '../opencode/opencode-client.types';
 import type { OpencodeService } from '../opencode/opencode.service';
-import { MAX_TOOL_ROUNDS } from '../tools/tool-budget';
+import {
+  MAX_TOOL_FAILURES_PER_EXCHANGE,
+  MAX_TOOL_ROUNDS,
+} from '../tools/tool-budget';
 import type {
   ToolActor,
   ToolDefinition,
@@ -103,14 +106,21 @@ class FakeToolRuntime implements ToolRuntime {
 
   async execute(
     call: { name: string; rawArguments: string },
-    _budget: ToolBudget,
+    budget: ToolBudget,
     _signal: AbortSignal,
     actor: ToolActor,
   ): Promise<ToolExecutionResult> {
     this.executeCalls.push(call);
     this.actors.push(actor);
+    const canned = this.results.shift();
+    // Mirrors the real runtime: a failed call is charged against the
+    // exchange's failure allowance, which is what eventually withdraws
+    // tools from the loop.
+    if (canned?.status === 'failed') {
+      budget.recordFailure();
+    }
     return (
-      this.results.shift() ?? {
+      canned ?? {
         status: 'done',
         content: 'no more canned results',
         label: 'done',
@@ -679,6 +689,118 @@ describe('ChatService', () => {
 
       const lastEvent = events[events.length - 1];
       expect(lastEvent).toEqual({ type: 'done', finishReason: 'tool_calls' });
+    });
+
+    it('withdraws tools once the exchange has spent its failure allowance, before rounds run out', async () => {
+      const conversationStore = new FakeConversationStore();
+      const usageService = new FakeUsageService();
+      const toolRuntime = new FakeToolRuntime();
+      // Every call fails, the way a run of malformed tool arguments did.
+      toolRuntime.results = Array.from(
+        { length: MAX_TOOL_FAILURES_PER_EXCHANGE },
+        () => ({
+          status: 'failed' as const,
+          content:
+            'Invalid arguments for web_fetch. Answer with what you already have.',
+          label: "Couldn't run web_fetch",
+          sources: [],
+        }),
+      );
+
+      let calls = 0;
+      const toolsSeenPerCall: unknown[] = [];
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        toolsSeenPerCall.push(params.tools);
+        yield doneChunk('tool_calls', {
+          toolCalls: [
+            {
+              id: `call-${calls}`,
+              name: 'web_fetch',
+              arguments: '{"url":"https://a.example"}',
+            },
+          ],
+        });
+      }
+
+      const service = new ChatService(
+        conversationStore,
+        usageService,
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      const events: ChatEvent[] = [];
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
+
+      // One round per failure, then one final round with no tools key —
+      // and that is strictly fewer rounds than MAX_TOOL_ROUNDS would have
+      // allowed, which is the whole point: the user does not sit through
+      // five rounds of the same failure.
+      expect(calls).toBe(MAX_TOOL_FAILURES_PER_EXCHANGE + 1);
+      expect(calls).toBeLessThan(MAX_TOOL_ROUNDS + 1);
+      expect(toolsSeenPerCall[MAX_TOOL_FAILURES_PER_EXCHANGE]).toBeUndefined();
+      expect(toolRuntime.executeCalls).toHaveLength(
+        MAX_TOOL_FAILURES_PER_EXCHANGE,
+      );
+    });
+
+    it('resolves the right chip when two calls in one round share a callId', async () => {
+      const conversationStore = new FakeConversationStore();
+      const usageService = new FakeUsageService();
+      const toolRuntime = new FakeToolRuntime();
+      toolRuntime.results = [
+        { status: 'done', content: 'a', label: 'Read a.example', sources: [] },
+        { status: 'done', content: 'b', label: 'Read b.example', sources: [] },
+      ];
+
+      let calls = 0;
+      async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        if (calls === 1) {
+          // An upstream that omits ids used to collapse both calls onto
+          // callId '', leaving the second chip stuck on 'running'.
+          yield doneChunk('tool_calls', {
+            toolCalls: [
+              {
+                id: '',
+                name: 'web_fetch',
+                arguments: '{"url":"https://a.example"}',
+              },
+              {
+                id: '',
+                name: 'web_fetch',
+                arguments: '{"url":"https://b.example"}',
+              },
+            ],
+          });
+          return;
+        }
+        yield { type: 'delta', text: 'done' };
+        yield doneChunk('stop');
+      }
+
+      const service = new ChatService(
+        conversationStore,
+        usageService,
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      await service.run('acct-1', body, () => {}, new AbortController().signal);
+
+      const saved = conversationStore.saveToolCallsCalls[0].chips;
+      expect(saved).toHaveLength(2);
+      expect(saved.map((c) => c.label)).toEqual([
+        'Read a.example',
+        'Read b.example',
+      ]);
+      expect(saved.every((c) => c.status === 'done')).toBe(true);
     });
 
     it('a failing execute still yields an answer and no error event', async () => {

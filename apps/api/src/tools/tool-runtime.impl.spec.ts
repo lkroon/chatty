@@ -1,5 +1,5 @@
 import { ToolRuntimeImpl } from './tool-runtime.impl';
-import { ToolBudget } from './tool-budget';
+import { MAX_TOOL_FAILURES_PER_EXCHANGE, ToolBudget } from './tool-budget';
 import type { SearchProvider, SearchResult } from './search-provider';
 
 function fakeProvider(
@@ -135,5 +135,64 @@ describe('ToolRuntimeImpl', () => {
     // The hostile text is still delivered — the model needs to see the page
     // it asked for. It is delivered inside the boundary, not stripped.
     expect(result.content).toContain('IGNORE PREVIOUS INSTRUCTIONS');
+  });
+
+  it('a web_fetch call with no usable url still costs a fetch', async () => {
+    const runtime = new ToolRuntimeImpl(fakeProvider(async () => []));
+    const budget = new ToolBudget();
+    const before = budget.fetchesRemaining;
+    const result = await runtime.execute(
+      { name: 'web_fetch', rawArguments: '{not json' },
+      budget,
+      new AbortController().signal,
+      ACTOR,
+    );
+    expect(result.status).toBe('failed');
+    expect(result.label).toBe("Couldn't run web_fetch");
+    // Free retries are what turn one malformed call into a screenful of
+    // identical failed chips.
+    expect(budget.fetchesRemaining).toBe(before - 1);
+  });
+
+  it('tells the model tools are withdrawn on the last failure the exchange allows', async () => {
+    const runtime = new ToolRuntimeImpl(
+      fakeProvider(async () => {
+        throw new Error('provider unreachable');
+      }),
+    );
+    const budget = new ToolBudget();
+    const contents: string[] = [];
+    for (let i = 0; i < MAX_TOOL_FAILURES_PER_EXCHANGE; i++) {
+      const result = await runtime.execute(
+        { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
+        budget,
+        new AbortController().signal,
+        ACTOR,
+      );
+      contents.push(result.content);
+    }
+    expect(
+      contents
+        .slice(0, -1)
+        .every((c) => !c.includes('no more will be offered')),
+    ).toBe(true);
+    expect(contents[contents.length - 1]).toContain('no more will be offered');
+    expect(budget.failuresExhausted).toBe(true);
+  });
+
+  it('a successful call costs nothing against the failure allowance', async () => {
+    const runtime = new ToolRuntimeImpl(
+      fakeProvider(async () => [
+        { title: 'T', url: 'https://x.example', snippet: 'S' },
+      ]),
+    );
+    const budget = new ToolBudget();
+    await runtime.execute(
+      { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
+      budget,
+      new AbortController().signal,
+      ACTOR,
+    );
+    expect(budget.failuresRemaining).toBe(MAX_TOOL_FAILURES_PER_EXCHANGE);
   });
 });

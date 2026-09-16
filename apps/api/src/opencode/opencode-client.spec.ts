@@ -380,6 +380,254 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
     }
   });
 
+  /**
+   * The upstream's tool-call framing is not one shape. Each case below was
+   * observed to silently lose calls before 2026-09-16, and every one of
+   * them reached the user as a tool that "failed repeatedly": a call whose
+   * arguments never arrived fails JSON.parse and surfaces as
+   * "Couldn't run web_fetch", and a call that vanished entirely leaves the
+   * model with nothing and no explanation.
+   */
+  describe('tool-call reassembly across the framings the upstream actually uses', () => {
+    /** Streams `frames`, then `[DONE]`, and returns the single done chunk. */
+    async function collectDone(frames: unknown[]): Promise<{
+      finishReason: string;
+      toolCalls?: { id: string; name: string; arguments: string }[];
+    }> {
+      const fake = await startFakeUpstream((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        for (const frame of frames) {
+          res.write(`data: ${JSON.stringify(frame)}\n\n`);
+        }
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+      try {
+        const client = new OpencodeClient(fake.baseUrl, 'k');
+        const chunks: unknown[] = [];
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'go' }],
+          sessionId: 'session-1',
+        })) {
+          chunks.push(chunk);
+        }
+        return chunks[chunks.length - 1] as never;
+      } finally {
+        await fake.close();
+      }
+    }
+
+    function call(index: number, id: string, url: string) {
+      return {
+        index,
+        id,
+        type: 'function',
+        function: { name: 'web_fetch', arguments: JSON.stringify({ url }) },
+      };
+    }
+
+    it('keeps every call when one frame batches several parallel calls', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  call(0, 'c1', 'https://a.example'),
+                  call(1, 'c2', 'https://b.example'),
+                  call(2, 'c3', 'https://c.example'),
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+        {
+          id: 'c2',
+          name: 'web_fetch',
+          arguments: '{"url":"https://b.example"}',
+        },
+        {
+          id: 'c3',
+          name: 'web_fetch',
+          arguments: '{"url":"https://c.example"}',
+        },
+      ]);
+    });
+
+    it('keeps calls delivered in the same frame as finish_reason', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: { tool_calls: [call(0, 'c1', 'https://a.example')] },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        },
+      ]);
+      expect(done.finishReason).toBe('tool_calls');
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+      ]);
+    });
+
+    it('re-serializes function.arguments handed back as an object rather than a JSON string', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c1',
+                    function: {
+                      name: 'web_fetch',
+                      arguments: { url: 'https://a.example' },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+      ]);
+      // The point of the case: these arguments must survive a JSON.parse,
+      // which is what the tool runtime does with them.
+      expect(JSON.parse(done.toolCalls![0].arguments)).toEqual({
+        url: 'https://a.example',
+      });
+    });
+
+    it('does not duplicate arguments when an upstream repeats entries cumulatively', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            { delta: { tool_calls: [call(0, 'c1', 'https://a.example')] } },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c1',
+                    function: { name: 'web_fetch', arguments: '' },
+                  },
+                  call(1, 'c2', 'https://b.example'),
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+        {
+          id: 'c2',
+          name: 'web_fetch',
+          arguments: '{"url":"https://b.example"}',
+        },
+      ]);
+    });
+
+    it('gives every call a distinct id when the upstream omits them', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: {
+                      name: 'web_fetch',
+                      arguments: '{"url":"https://a.example"}',
+                    },
+                  },
+                  {
+                    index: 1,
+                    function: {
+                      name: 'web_fetch',
+                      arguments: '{"url":"https://b.example"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      const ids = done.toolCalls!.map((c) => c.id);
+      expect(ids.every((id) => id.length > 0)).toBe(true);
+      expect(new Set(ids).size).toBe(2);
+    });
+
+    it('still yields text deltas from a frame that also carries tool calls', async () => {
+      const fake = await startFakeUpstream((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(
+          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Looking…' } }] })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: { tool_calls: [call(0, 'c1', 'https://a.example')] },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          })}\n\n`,
+        );
+        res.end();
+      });
+      try {
+        const client = new OpencodeClient(fake.baseUrl, 'k');
+        const chunks: unknown[] = [];
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'go' }],
+          sessionId: 'session-1',
+        })) {
+          chunks.push(chunk);
+        }
+        expect(chunks[0]).toEqual({ type: 'delta', text: 'Looking…' });
+        expect(chunks).toHaveLength(2);
+      } finally {
+        await fake.close();
+      }
+    });
+  });
+
   it('a stream emitting finish_reason then [DONE] yields exactly one done chunk', async () => {
     const fake = await startFakeUpstream((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
