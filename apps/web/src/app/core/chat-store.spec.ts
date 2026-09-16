@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { Subject, of, throwError } from 'rxjs';
-import type { ChatEvent, ConversationDetail, ConversationListItem, Model, ProposalCard } from '@contracts';
+import type {
+  ChatEvent,
+  ConversationDetail,
+  ConversationListItem,
+  Model,
+  ProposalCard,
+} from '@contracts';
 
 import { CHAT_API, ChatApi } from './chat-api';
 import { ChatStore } from './chat-store';
@@ -16,9 +22,7 @@ class FakeChatApi implements ChatApi {
   detail: ConversationDetail = {
     id: 'c1',
     title: 'First',
-    messages: [
-      { id: 'm1', role: 'user', content: 'hi', createdAt: 'now', finishReason: null },
-    ],
+    messages: [{ id: 'm1', role: 'user', content: 'hi', createdAt: 'now', finishReason: null }],
   };
   chatEvents$ = new Subject<ChatEvent>();
 
@@ -63,7 +67,11 @@ describe('ChatStore', () => {
     localStorage.removeItem('oc-model');
     api = new FakeChatApi();
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
   });
@@ -82,7 +90,11 @@ describe('ChatStore', () => {
     TestBed.resetTestingModule();
     api = new FakeChatApi();
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-a');
@@ -99,7 +111,11 @@ describe('ChatStore', () => {
       { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
     ];
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('glm-5.3-flash');
@@ -114,7 +130,11 @@ describe('ChatStore', () => {
       { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
     ];
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-a');
@@ -142,7 +162,11 @@ describe('ChatStore', () => {
       { id: 'glm-5.3-flash', label: 'glm-5.3-flash', family: 'opencode' },
     ];
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('glm-5.3-flash');
@@ -154,7 +178,11 @@ describe('ChatStore', () => {
     TestBed.resetTestingModule();
     api = new FakeChatApi();
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection(), ChatStore, { provide: CHAT_API, useValue: api }],
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
     });
     store = TestBed.inject(ChatStore);
     expect(store.selectedModelId()).toBe('model-b');
@@ -211,7 +239,13 @@ describe('ChatStore', () => {
     api.chatEvents$.next({ type: 'meta', conversationId: 'c1', messageId: 'm2' });
     api.chatEvents$.next({
       type: 'tool',
-      chip: { callId: 'call-1', name: 'web_search', status: 'running', label: 'Searching…', sources: [] },
+      chip: {
+        callId: 'call-1',
+        name: 'web_search',
+        status: 'running',
+        label: 'Searching…',
+        sources: [],
+      },
     });
     expect(store.streamingToolCalls().length).toBe(1);
     api.chatEvents$.next({
@@ -317,7 +351,7 @@ describe('ChatStore', () => {
     expect(store.streamingToolCalls()[0].proposal!.status).toBe('discarded');
   });
 
-  it('surfaces the server\'s own message when a confirm is refused', () => {
+  it("surfaces the server's own message when a confirm is refused", () => {
     api.confirmResult = new Error('Google was connected before this permission existed.');
     store.confirmProposal('p1');
     expect(store.error()).toContain('before this permission existed');

@@ -65,7 +65,9 @@ import { ToolChip } from './tool-chip';
           />
         }
       }
-      @if (!store.isStreaming() && !store.isLoadingConversation() && store.messages().length === 0) {
+      @if (
+        !store.isStreaming() && !store.isLoadingConversation() && store.messages().length === 0
+      ) {
         <p class="hint">Say something to start the conversation.</p>
       }
       @if (store.error()) {

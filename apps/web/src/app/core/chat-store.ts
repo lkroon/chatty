@@ -244,9 +244,7 @@ export class ChatStore {
         this.setProposalBusy(id, false);
         // The API port already unwrapped the server's message for these two
         // calls — "reconnect Google" is the whole point of the 409.
-        this.error.set(
-          (err as Error)?.message ?? 'That could not be completed. Please try again.',
-        );
+        this.error.set((err as Error)?.message ?? 'That could not be completed. Please try again.');
       },
     });
   }
