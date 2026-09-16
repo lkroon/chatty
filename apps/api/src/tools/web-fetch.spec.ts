@@ -36,7 +36,10 @@ function allowOnly(baseUrl: string): jest.SpyInstance {
     .spyOn(urlGuardModule, 'checkUrl')
     .mockImplementation(async (url: string) => {
       if (url.startsWith(baseUrl)) {
-        return { allowed: true };
+        return {
+          allowed: true,
+          addresses: [{ address: '127.0.0.1', family: 4 }],
+        };
       }
       return actualCheckUrl(url);
     });

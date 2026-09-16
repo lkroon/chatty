@@ -101,6 +101,11 @@ describeIfDocker('ConversationsService (integration)', () => {
       model: 'm',
       userContent: 'hello',
     });
+    await service.finalizeAssistantMessage({
+      assistantMessageId: first.assistantMessageId,
+      content: 'hi',
+      aborted: false,
+    });
     const second = await service.startExchange({
       accountId: String(accountAId),
       conversationId: first.conversationId,
@@ -114,6 +119,28 @@ describeIfDocker('ConversationsService (integration)', () => {
       first.conversationId,
     );
     expect(detail.messages.length).toBe(4);
+  });
+
+  it('rejects a second exchange while the conversation has an active assistant placeholder', async () => {
+    const first = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hello',
+    });
+    const error = await expectToReject(
+      service.startExchange({
+        accountId: String(accountAId),
+        conversationId: first.conversationId,
+        model: 'm',
+        userContent: 'again',
+      }),
+    );
+    expect((error as Error).message).toContain('active exchange');
+    const detail = await service.getDetailForAccount(
+      String(accountAId),
+      first.conversationId,
+    );
+    expect(detail.messages.length).toBe(2);
   });
 
   it('returns history for the account without the current assistant placeholder', async () => {
@@ -166,9 +193,11 @@ describeIfDocker('ConversationsService (integration)', () => {
   });
 
   it('finalizeAssistantMessage sets content and a null finishReason on normal completion', async () => {
-    const { conversationId, assistantMessageId } = await service.startExchange(
-      { accountId: String(accountAId), model: 'm', userContent: 'hi' },
-    );
+    const { conversationId, assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hi',
+    });
     await service.finalizeAssistantMessage({
       assistantMessageId,
       content: 'the answer',
@@ -185,9 +214,11 @@ describeIfDocker('ConversationsService (integration)', () => {
   });
 
   it("finalizeAssistantMessage sets finishReason to 'aborted' on abort", async () => {
-    const { conversationId, assistantMessageId } = await service.startExchange(
-      { accountId: String(accountAId), model: 'm', userContent: 'hi' },
-    );
+    const { conversationId, assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hi',
+    });
     await service.finalizeAssistantMessage({
       assistantMessageId,
       content: 'partial',
@@ -277,7 +308,9 @@ describeIfDocker('ConversationsService (integration)', () => {
           name: 'web_search',
           status: 'done',
           label: 'Searched "something"',
-          sources: [{ title: 'Something', url: 'https://example.com/something' }],
+          sources: [
+            { title: 'Something', url: 'https://example.com/something' },
+          ],
         },
         {
           callId: 'call-2',
@@ -294,7 +327,9 @@ describeIfDocker('ConversationsService (integration)', () => {
       conversationId,
     );
     const userMsg = detail.messages.find((m) => m.role === 'user');
-    const assistantMsg = detail.messages.find((m) => m.id === assistantMessageId);
+    const assistantMsg = detail.messages.find(
+      (m) => m.id === assistantMessageId,
+    );
 
     expect(userMsg?.toolCalls).toBe(undefined);
     expect(assistantMsg?.toolCalls?.length).toBe(2);
@@ -347,7 +382,7 @@ describeIfDocker('ConversationsService (integration)', () => {
     expect(rows.length).toBe(0);
   });
 
-  it('rebuilds a chip\'s proposal card from the row, not from what was stored', async () => {
+  it("rebuilds a chip's proposal card from the row, not from what was stored", async () => {
     const repository = new ProposalsRepository(db);
     const { conversationId, assistantMessageId } = await service.startExchange({
       accountId: String(accountAId),
@@ -408,7 +443,10 @@ describeIfDocker('ConversationsService (integration)', () => {
       link: 'https://cal/evt-1',
     });
 
-    const detail = await service.getDetailForAccount(String(accountAId), conversationId);
+    const detail = await service.getDetailForAccount(
+      String(accountAId),
+      conversationId,
+    );
     const assistant = detail.messages.find((m) => m.role === 'assistant')!;
     const chip = assistant.toolCalls![0];
     expect(chip.proposal!.status).toBe('executed');

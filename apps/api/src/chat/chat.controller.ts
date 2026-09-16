@@ -1,8 +1,49 @@
-import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { ChatRequest } from '@contracts/chat';
 import { ChatService } from './chat.service';
 import { formatSseEvent } from './sse.util';
+
+const MAX_CONTENT_LENGTH = 32_000;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function validateRequest(
+  body: unknown,
+  isKnownModel: (model: string) => boolean,
+): ChatRequest {
+  if (!body || typeof body !== 'object') {
+    throw new BadRequestException('request body must be an object');
+  }
+  const request = body as Record<string, unknown>;
+  if (typeof request.content !== 'string' || !request.content.trim()) {
+    throw new BadRequestException('content must be a non-empty string');
+  }
+  if (request.content.length > MAX_CONTENT_LENGTH) {
+    throw new BadRequestException(
+      `content must be at most ${MAX_CONTENT_LENGTH} characters`,
+    );
+  }
+  if (typeof request.model !== 'string' || !isKnownModel(request.model)) {
+    throw new BadRequestException('unknown model');
+  }
+  if (
+    request.conversationId !== undefined &&
+    (typeof request.conversationId !== 'string' ||
+      !UUID_PATTERN.test(request.conversationId))
+  ) {
+    throw new BadRequestException('conversationId must be a UUID');
+  }
+  return request as unknown as ChatRequest;
+}
 
 // POST /api/chat (SSE) — see chat.module.ts. Registered without the /api
 // prefix; app.setGlobalPrefix('api') in main.ts (owned by another
@@ -21,8 +62,12 @@ export class ChatController {
   async chat(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: ChatRequest,
+    @Body() body: unknown,
   ): Promise<void> {
+    const validated = validateRequest(body, (model) =>
+      this.chatService.isKnownModel(model),
+    );
+
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -49,7 +94,7 @@ export class ChatController {
 
     await this.chatService.run(
       accountId,
-      body,
+      validated,
       (event) => {
         res.write(formatSseEvent(event));
       },

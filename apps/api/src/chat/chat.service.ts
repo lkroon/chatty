@@ -94,6 +94,10 @@ export class ChatService {
     @Inject(TOOL_RUNTIME) private readonly toolRuntime: ToolRuntime,
   ) {}
 
+  isKnownModel(model: string): boolean {
+    return this.opencodeService.getModels().some((candidate) => candidate.id === model);
+  }
+
   async run(
     accountId: string | undefined,
     body: ChatRequest,

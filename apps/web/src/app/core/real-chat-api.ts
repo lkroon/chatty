@@ -79,6 +79,7 @@ export class RealChatApi implements ChatApi {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         const parser = new SseFrameParser();
+        let terminalEventReceived = false;
 
         try {
           while (true) {
@@ -91,12 +92,17 @@ export class RealChatApi implements ChatApi {
               const event = JSON.parse(frame.data) as ChatEvent;
               subscriber.next(event);
               if (event.type === 'done' || event.type === 'error') {
+                terminalEventReceived = true;
                 subscriber.complete();
                 return;
               }
             }
           }
-          subscriber.complete();
+          if (terminalEventReceived) {
+            subscriber.complete();
+          } else {
+            subscriber.error(new Error('chat stream ended before a terminal event'));
+          }
         } catch (err) {
           if (!isAbortError(err)) {
             subscriber.error(err);

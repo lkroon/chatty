@@ -1,5 +1,10 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { ToolCallChip } from '@contracts/chat';
 import type {
   ConversationDetail,
@@ -51,66 +56,87 @@ export class ConversationsService implements ConversationStore {
     private readonly proposalsRepository: ProposalsRepository,
   ) {}
 
-  async startExchange(
-    input: StartExchangeInput,
-  ): Promise<StartExchangeResult> {
+  async startExchange(input: StartExchangeInput): Promise<StartExchangeResult> {
     const { accountId, model, userContent } = input;
     const accountIdNum = Number(accountId);
 
-    let conversationId = input.conversationId;
-    if (conversationId) {
-      const [existing] = await this.db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.id, conversationId),
-            eq(conversations.accountId, accountIdNum),
-          ),
-        )
-        .limit(1);
-      if (!existing) {
-        throw new NotFoundException('conversation not found');
+    return this.db.transaction(async (tx) => {
+      let conversationId = input.conversationId;
+      if (conversationId) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${conversationId}, 0))`,
+        );
+        const [existing] = await tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.id, conversationId),
+              eq(conversations.accountId, accountIdNum),
+            ),
+          )
+          .limit(1);
+        if (!existing) {
+          throw new NotFoundException('conversation not found');
+        }
+
+        const [activeExchange] = await tx
+          .select({ id: messages.id })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.role, 'assistant'),
+              eq(messages.content, ''),
+              sql`${messages.finishReason} is null`,
+            ),
+          )
+          .limit(1);
+        if (activeExchange) {
+          throw new ConflictException(
+            'conversation already has an active exchange',
+          );
+        }
+      } else {
+        const [created] = await tx
+          .insert(conversations)
+          .values({
+            accountId: accountIdNum,
+            title: userContent.slice(0, TITLE_MAX_LEN),
+            model,
+          })
+          .returning({ id: conversations.id });
+        conversationId = created.id;
       }
-    } else {
-      const [created] = await this.db
-        .insert(conversations)
-        .values({
-          accountId: accountIdNum,
-          title: userContent.slice(0, TITLE_MAX_LEN),
-          model,
-        })
-        .returning({ id: conversations.id });
-      conversationId = created.id;
-    }
 
-    await this.db.insert(messages).values({
-      conversationId,
-      role: 'user',
-      content: userContent,
-      model,
-    });
-
-    const [assistantPlaceholder] = await this.db
-      .insert(messages)
-      .values({
+      await tx.insert(messages).values({
         conversationId,
-        role: 'assistant',
-        content: '',
+        role: 'user',
+        content: userContent,
         model,
-        finishReason: null,
-      })
-      .returning({ id: messages.id });
+      });
 
-    await this.db
-      .update(conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
+      const [assistantPlaceholder] = await tx
+        .insert(messages)
+        .values({
+          conversationId,
+          role: 'assistant',
+          content: '',
+          model,
+          finishReason: null,
+        })
+        .returning({ id: messages.id });
 
-    return {
-      conversationId,
-      assistantMessageId: assistantPlaceholder.id,
-    };
+      await tx
+        .update(conversations)
+        .set({ updatedAt: new Date() })
+        .where(eq(conversations.id, conversationId));
+
+      return {
+        conversationId,
+        assistantMessageId: assistantPlaceholder.id,
+      };
+    });
   }
 
   async finalizeAssistantMessage(
@@ -194,7 +220,7 @@ export class ConversationsService implements ConversationStore {
           ne(messages.id, input.excludeMessageId),
         ),
       )
-      .orderBy(messages.createdAt);
+      .orderBy(messages.createdAt, messages.id);
 
     return rows.map((row) => ({
       role: row.role as 'user' | 'assistant',
@@ -251,7 +277,7 @@ export class ConversationsService implements ConversationStore {
       })
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(messages.createdAt);
+      .orderBy(messages.createdAt, messages.id);
 
     const toolCallsByMessageId = await this.loadToolCallsByMessageId(
       rows.map((row) => row.id),
@@ -300,7 +326,9 @@ export class ConversationsService implements ConversationStore {
 
     // One extra query for the whole conversation, not one per chip.
     const proposalRows = await this.proposalsRepository.findManyByIds(
-      rows.map((row) => row.proposalId).filter((id): id is string => Boolean(id)),
+      rows
+        .map((row) => row.proposalId)
+        .filter((id): id is string => Boolean(id)),
     );
     const now = new Date();
     const cardsById = new Map(

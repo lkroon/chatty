@@ -234,6 +234,14 @@ describe('ChatStore', () => {
     expect(store.messages().some((m) => m.role === 'assistant')).toBeFalse();
   });
 
+  it('recovers when a stream completes without a done or error event', () => {
+    store.send('hello');
+    api.chatEvents$.next({ type: 'delta', text: 'partial' });
+    api.chatEvents$.complete();
+    expect(store.isStreaming()).toBeFalse();
+    expect(store.error()).toContain('Something went wrong');
+  });
+
   it('two tool events with the same callId produce one chip, not two, and it survives into the finalized message', () => {
     store.send('search something');
     api.chatEvents$.next({ type: 'meta', conversationId: 'c1', messageId: 'm2' });

@@ -32,7 +32,7 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
         <button
           type="submit"
           class="round-btn send-btn"
-          [disabled]="!draft().trim()"
+          [disabled]="!draft().trim() || !store.selectedModelId()"
           aria-label="Send"
         >
           <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 10l13-7-4 7 4 7-13-7z" /></svg>
@@ -167,7 +167,7 @@ export class Composer {
 
   private send(): void {
     const content = this.draft();
-    if (!content.trim() || this.store.isStreaming()) {
+    if (!content.trim() || this.store.isStreaming() || !this.store.selectedModelId()) {
       return;
     }
     this.store.send(content);

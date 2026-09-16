@@ -116,7 +116,10 @@ function ipv6InCidr(ip: string, cidr: string): boolean {
   if (prefix === 0) {
     return true;
   }
-  const mask = prefix === 128 ? (1n << 128n) - 1n : ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
+  const mask =
+    prefix === 128
+      ? (1n << 128n) - 1n
+      : ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
   return (ipVal & mask) === (netVal & mask);
 }
 
@@ -135,7 +138,7 @@ function mappedIpv4(ip: string): string | null {
   if (value === null) {
     return null;
   }
-  if ((value >> 32n) !== 0xffffn) {
+  if (value >> 32n !== 0xffffn) {
     return null;
   }
   const low32 = value & 0xffffffffn;
@@ -157,6 +160,7 @@ export function isBlockedIp(ip: string): boolean {
 export interface UrlGuardResult {
   allowed: boolean;
   reason?: string;
+  addresses?: dns.LookupAddress[];
 }
 
 /**
@@ -186,7 +190,12 @@ export async function checkUrl(rawUrl: string): Promise<UrlGuardResult> {
     if (isBlockedIp(hostname)) {
       return { allowed: false, reason: `blocked address ${hostname}` };
     }
-    return { allowed: true };
+    return {
+      allowed: true,
+      addresses: [
+        { address: hostname, family: hostname.includes(':') ? 6 : 4 },
+      ],
+    };
   }
 
   let records: dns.LookupAddress[];
@@ -196,12 +205,18 @@ export async function checkUrl(rawUrl: string): Promise<UrlGuardResult> {
     return { allowed: false, reason: `DNS lookup failed for ${hostname}` };
   }
   if (records.length === 0) {
-    return { allowed: false, reason: `DNS lookup returned no addresses for ${hostname}` };
+    return {
+      allowed: false,
+      reason: `DNS lookup returned no addresses for ${hostname}`,
+    };
   }
   for (const record of records) {
     if (isBlockedIp(record.address)) {
-      return { allowed: false, reason: `${hostname} resolves to blocked address ${record.address}` };
+      return {
+        allowed: false,
+        reason: `${hostname} resolves to blocked address ${record.address}`,
+      };
     }
   }
-  return { allowed: true };
+  return { allowed: true, addresses: records };
 }
