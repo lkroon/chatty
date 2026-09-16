@@ -14,6 +14,7 @@ function items(overrides: Partial<BriefingItems> = {}): BriefingItems {
     timeZone: 'Europe/Amsterdam',
     calendar: { status: 'ok', items: [] },
     tasks: { status: 'ok', items: [] },
+    doneToday: { status: 'ok', items: [] },
     mail: { status: 'ok', items: [] },
     mailHasMore: false,
     pending: [],
@@ -95,6 +96,21 @@ describe('briefing-cache', () => {
       }),
     );
     expect(before).not.toBe(after);
+  });
+
+  it('ignores what was finished when fingerprinting', () => {
+    // Ticking a task off must not buy a new summary: the summary never
+    // mentions completed work, so the model has nothing new to say.
+    const before = itemFingerprint(items());
+    const after = itemFingerprint(
+      items({
+        doneToday: {
+          status: 'ok',
+          items: [{ id: 'd1', title: 'Pay invoice', completedAt: '2026-09-08T08:00:00.000Z' }],
+        },
+      }),
+    );
+    expect(before).toBe(after);
   });
 
   it('is order-independent within a section', () => {

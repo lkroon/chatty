@@ -17,7 +17,11 @@ export async function completeTask(
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ status: 'completed' }),
+    // The completion stamp is sent rather than left to Google. The Done
+    // today group reads `completed` back and filters on it, and a task the
+    // user ticked off here has to appear in it — this is the one thing that
+    // makes that independent of whether the API stamps it for us.
+    body: JSON.stringify({ status: 'completed', completed: new Date().toISOString() }),
   });
 
   if (response.status === 404) {

@@ -5,7 +5,7 @@ import type { BriefingItems, BriefingSection } from '@contracts';
  * later change to `BriefingItems` must not be handed stale data it cannot
  * read. Bump the suffix whenever `CachedBriefing` changes.
  */
-export const BRIEFING_CACHE_KEY = 'chatty.briefing.v1';
+export const BRIEFING_CACHE_KEY = 'chatty.briefing.v2';
 
 /**
  * A cache this old is not worth showing even for the instant before the
@@ -79,6 +79,9 @@ export function itemFingerprint(items: BriefingItems): string {
     section(items.calendar, (e) => `e:${e.id}:${e.start ?? 'allday'}`),
     section(items.tasks, (t) => `t:${t.id}:${t.due}`),
     section(items.mail, (m) => `m:${m.id}`),
+    // `doneToday` is deliberately absent. Ticking a task off changes it on
+    // every refresh, and the summary never mentions what is already done —
+    // including it here would buy a new model call for nothing.
     [...items.pending.map((p) => `p:${p.id}:${p.status}`)].sort().join(','),
     `x:${items.mailHasMore ? 1 : 0}`,
   ];

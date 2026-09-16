@@ -1,7 +1,9 @@
-import type { BriefingTask } from '@contracts/briefing';
+import type { BriefingDoneTask, BriefingTask } from '@contracts/briefing';
 
 const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 const MAX_TASKS = 100;
+/** How many finished tasks the Done group shows. A sense of the day, not a log. */
+const MAX_DONE = 10;
 
 interface GoogleTask {
   id?: string;
@@ -9,6 +11,8 @@ interface GoogleTask {
   status?: string;
   /** RFC3339, always at midnight UTC — Google Tasks stores a date, not a time. */
   due?: string;
+  /** RFC3339 in UTC. Present only on a task that has been completed. */
+  completed?: string;
   notes?: string;
 }
 
@@ -68,4 +72,52 @@ export async function fetchDueTasks(
       }
       return a.due.localeCompare(b.due);
     });
+}
+
+/**
+ * Tasks completed today, most recent first, capped at `MAX_DONE`.
+ *
+ * Two flags rather than one: `showCompleted` alone is not enough, because a
+ * task goes `hidden` once the list is cleared, and Google's own clients pass
+ * both. Without `showHidden` the group would quietly empty itself the first
+ * time the user tidies up in the Tasks app.
+ *
+ * `completedMin` is an instant, not a date, so it takes the zone's offset at
+ * local midnight — the same reasoning as the calendar window.
+ */
+export async function fetchCompletedToday(
+  accessToken: string,
+  isoDate: string,
+  midnightOffset: string,
+): Promise<BriefingDoneTask[]> {
+  const params = new URLSearchParams({
+    showCompleted: 'true',
+    showHidden: 'true',
+    showDeleted: 'false',
+    completedMin: `${isoDate}T00:00:00${midnightOffset}`,
+    maxResults: String(MAX_TASKS),
+  });
+
+  const response = await fetch(`${TASKS_URL}?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Tasks request failed (${response.status})`);
+  }
+
+  const body = (await response.json()) as { items?: GoogleTask[] };
+  return (body.items ?? [])
+    .filter((item) => item.status === 'completed' && !!item.completed && !!item.id)
+    .map((item) => ({
+      id: item.id as string,
+      title: item.title || '(no title)',
+      completedAt: item.completed as string,
+    }))
+    // tasks.list documents no ordering, so the sort is ours to do. Most
+    // recent first: the last thing finished is the one worth seeing.
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+    .slice(0, MAX_DONE);
 }

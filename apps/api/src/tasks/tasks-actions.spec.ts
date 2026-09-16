@@ -21,7 +21,11 @@ describe('completeTask', () => {
       'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/t%201',
     );
     expect(init.method).toBe('PATCH');
-    expect(JSON.parse(init.body as string)).toEqual({ status: 'completed' });
+    // The stamp goes with it, so "Done today" can find the task afterwards.
+    expect(JSON.parse(init.body as string)).toEqual({
+      status: 'completed',
+      completed: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
     expect((init.headers as Record<string, string>).Authorization).toBe(
       'Bearer at-1',
     );

@@ -57,6 +57,21 @@ export interface BriefingTask {
   notes: string | null;
 }
 
+/**
+ * One task finished today, for the "Done today" group.
+ *
+ * Deliberately not a `BriefingTask`: nothing here is actionable. There is no
+ * due date to show, no tick to complete and no dismiss — it is a record of
+ * something already done, and the only thing it carries beyond its title is
+ * when it happened.
+ */
+export interface BriefingDoneTask {
+  id: string;
+  title: string;
+  /** RFC3339 in UTC, as Google records it. Rendered in the briefing's zone. */
+  completedAt: string;
+}
+
 /** One mail, metadata and snippet only — never the body. */
 export interface BriefingMail {
   id: string;
@@ -89,6 +104,8 @@ export interface Briefing {
   calendar: BriefingSection<BriefingEvent>;
   /** Tasks due today, overdue or undated. Dated first, soonest first. */
   tasks: BriefingSection<BriefingTask>;
+  /** What was finished today, most recent first. Capped, and never empty-padded. */
+  doneToday: BriefingSection<BriefingDoneTask>;
   mail: BriefingSection<BriefingMail>;
   /**
    * True when the unread window held more messages than the section shows.

@@ -219,6 +219,34 @@ const UNDO_WINDOW_MS = 6000;
                   <p class="hint">{{ b.tasks.message }}</p>
                 }
               }
+              <!--
+                Closed by default: this is the one group on Today that asks
+                for nothing. It is here for the moment you want it, and out
+                of the way of the work that is still open.
+              -->
+              @if (doneToday().length) {
+                <button
+                  type="button"
+                  class="fold"
+                  data-testid="done-today"
+                  [attr.aria-expanded]="doneOpen()"
+                  (click)="toggleDone()"
+                >
+                  <span class="fold__chev" aria-hidden="true">{{ doneOpen() ? '▾' : '▸' }}</span>
+                  <span class="fold__label">Done today</span>
+                  <span class="fold__preview">{{ donePreview() }}</span>
+                  <span class="fold__count">{{ doneToday().length }}</span>
+                </button>
+                @if (doneOpen()) {
+                  @for (task of doneToday(); track task.id) {
+                    <div class="done">
+                      <span class="done__tick" aria-hidden="true">✓</span>
+                      <span class="done__title">{{ task.title }}</span>
+                      <span class="done__at">{{ formatClock(task.completedAt) }}</span>
+                    </div>
+                  }
+                }
+              }
             </section>
 
             <section class="card">
@@ -478,6 +506,33 @@ const UNDO_WINDOW_MS = 6000;
       white-space: nowrap;
     }
     .fold__count {
+      flex-shrink: 0;
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Quieter than a task row on purpose: nothing here is actionable, so it
+       reads as a record rather than as work still waiting. */
+    .done {
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+      padding: 0.22rem 0 0.22rem 0.9rem;
+      font-size: 0.88rem;
+      color: var(--oc-text-muted);
+    }
+    .done__tick {
+      flex-shrink: 0;
+      color: var(--oc-accent);
+    }
+    .done__title {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      text-decoration: line-through;
+      text-decoration-color: var(--oc-rule);
+    }
+    .done__at {
       flex-shrink: 0;
       font-family: var(--font-meta);
       font-size: 0.72rem;
@@ -904,6 +959,48 @@ export class BriefingShell {
     this.openDays.update((open) =>
       open.includes(date) ? open.filter((d) => d !== date) : [...open, date],
     );
+  }
+
+  /** What was finished today, most recent first. Empty unless Google gave it. */
+  protected readonly doneToday = computed(() => {
+    const section = this.briefing()?.doneToday;
+    return section?.status === 'ok' ? section.items : [];
+  });
+
+  protected readonly doneOpen = signal(false);
+
+  protected toggleDone(): void {
+    this.doneOpen.update((open) => !open);
+  }
+
+  /** The first titles, so the closed line still says what the day held. */
+  protected readonly donePreview = computed(() =>
+    this.doneToday()
+      .slice(0, 2)
+      .map((task) => task.title)
+      .join(', '),
+  );
+
+  /**
+   * A completion instant, as `HH:MM` in the briefing's zone.
+   *
+   * Unlike an event's start, this one arrives in UTC — Google records it that
+   * way — so it cannot be read off the string the way formatTime does.
+   */
+  protected formatClock(iso: string): string {
+    const timeZone = this.briefing()?.timeZone;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(iso));
+    } catch {
+      // An unparseable instant or a zone this browser does not know. The
+      // title is the point of the row; the time is not worth an exception.
+      return '';
+    }
   }
 
   /** Tasks with a due date — today's and anything late. */

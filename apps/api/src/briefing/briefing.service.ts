@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type {
   Briefing,
+  BriefingDoneTask,
   BriefingEvent,
   BriefingItems,
   BriefingMail,
@@ -12,17 +13,19 @@ import { OpencodeService } from '../opencode/opencode.service';
 import { GoogleTokenService } from '../google/google-token.service';
 import { NotConnectedError } from '../google/errors';
 import { ProposalsService } from '../proposals/proposals.service';
-import { fetchAgendaEvents } from './calendar-source';
+import { fetchAgendaEvents, zoneOffset } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
-import { fetchDueTasks } from './tasks-source';
+import { fetchCompletedToday, fetchDueTasks } from './tasks-source';
 
 export const CALENDAR_FETCHER = 'CALENDAR_FETCHER';
 export const GMAIL_FETCHER = 'GMAIL_FETCHER';
 export const TASKS_FETCHER = 'TASKS_FETCHER';
+export const DONE_FETCHER = 'DONE_FETCHER';
 
 export type CalendarFetcher = typeof fetchAgendaEvents;
 export type GmailFetcher = typeof fetchRecentMail;
 export type TasksFetcher = typeof fetchDueTasks;
+export type DoneFetcher = typeof fetchCompletedToday;
 
 /** Today in the configured zone, as `YYYY-MM-DD`. */
 export function todayInZone(timeZone: string, now = new Date()): string {
@@ -45,6 +48,7 @@ export class BriefingService {
     @Inject(CALENDAR_FETCHER) private readonly fetchEvents: CalendarFetcher,
     @Inject(GMAIL_FETCHER) private readonly fetchMail: GmailFetcher,
     @Inject(TASKS_FETCHER) private readonly fetchTasks: TasksFetcher,
+    @Inject(DONE_FETCHER) private readonly fetchDone: DoneFetcher,
     private readonly proposals: ProposalsService,
   ) {}
 
@@ -70,6 +74,7 @@ export class BriefingService {
           timeZone,
           calendar: { status: 'not_connected' },
           tasks: { status: 'not_connected' },
+          doneToday: { status: 'not_connected' },
           mail: { status: 'not_connected' },
           mailHasMore: false,
           pending: [],
@@ -79,13 +84,14 @@ export class BriefingService {
       throw err;
     }
 
-    // Four fetches, one round trip. Proposals join the same allSettled so a
+    // Five fetches, one round trip. Proposals join the same allSettled so a
     // slow or broken proposals query costs the page nothing.
-    const [calendarResult, mailResult, tasksResult, pendingResult] =
+    const [calendarResult, mailResult, tasksResult, doneResult, pendingResult] =
       await Promise.allSettled([
         this.fetchEvents(accessToken, date, timeZone),
         this.fetchMail(accessToken),
         this.fetchTasks(accessToken, date),
+        this.fetchDone(accessToken, date, zoneOffset(date, timeZone)),
         this.proposals.pendingForAccount(accountId),
       ]);
 
@@ -98,6 +104,13 @@ export class BriefingService {
       tasksResult,
       'Could not read your tasks.',
       'tasks',
+    );
+    // Its own section, so a failure here costs the user their done list and
+    // nothing else — the tasks they still have to do are the point of the card.
+    const doneToday = this.toSection<BriefingDoneTask>(
+      doneResult,
+      'Could not read what you finished.',
+      'doneToday',
     );
     // The mail fetcher returns a wrapper, so it is unwrapped into the same
     // section shape as the others before toSection sees it.
@@ -117,6 +130,7 @@ export class BriefingService {
       timeZone,
       calendar,
       tasks,
+      doneToday,
       mail,
       mailHasMore,
       pending,
