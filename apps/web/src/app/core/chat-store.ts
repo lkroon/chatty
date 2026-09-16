@@ -83,6 +83,32 @@ export class ChatStore {
     return chips.filter((chip) => chip.proposal?.confirmable).length;
   });
 
+  /**
+   * The line shown under the thread while a response is in flight, or null
+   * when there is nothing to say.
+   *
+   * There used to be no indicator at all for most of an exchange: the only
+   * one was "Thinking…", gated on a `thinking` event having arrived with no
+   * text yet, and the first delta cleared it for good. That left three
+   * stretches where the screen was simply still — before the first event,
+   * between tool rounds once text had already streamed, and for any model
+   * whose upstream sends no reasoning frames at all. From the outside those
+   * are indistinguishable from a hung request.
+   *
+   * A running tool chip carries its own spinner and its own label
+   * ("Searching…", "Reading…"), so this yields to it rather than stacking a
+   * second indicator underneath.
+   */
+  readonly activityLabel = computed<string | null>(() => {
+    if (!this.isStreaming()) {
+      return null;
+    }
+    if (this.streamingToolCalls().some((chip) => chip.status === 'running')) {
+      return null;
+    }
+    return this.streamingThinking() ? 'Thinking…' : 'Working…';
+  });
+
   private pendingMessageId: string | null = null;
   private streamSub?: Subscription;
 
@@ -244,9 +270,7 @@ export class ChatStore {
         this.setProposalBusy(id, false);
         // The API port already unwrapped the server's message for these two
         // calls — "reconnect Google" is the whole point of the 409.
-        this.error.set(
-          (err as Error)?.message ?? 'That could not be completed. Please try again.',
-        );
+        this.error.set((err as Error)?.message ?? 'That could not be completed. Please try again.');
       },
     });
   }

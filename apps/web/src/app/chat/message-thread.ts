@@ -50,9 +50,6 @@ import { ToolChip } from './tool-chip';
             }
           </div>
         }
-        @if (store.streamingThinking() && !store.streamingText()) {
-          <p class="hint hint--thinking">Thinking…</p>
-        }
         @if (store.streamingText()) {
           <app-message-bubble
             [message]="{
@@ -64,8 +61,18 @@ import { ToolChip } from './tool-chip';
             }"
           />
         }
+        @if (store.activityLabel(); as label) {
+          <p class="activity" role="status" [attr.aria-label]="label">
+            <span class="activity__dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+            <span class="activity__label">{{ label }}</span>
+          </p>
+        }
       }
-      @if (!store.isStreaming() && !store.isLoadingConversation() && store.messages().length === 0) {
+      @if (
+        !store.isStreaming() && !store.isLoadingConversation() && store.messages().length === 0
+      ) {
         <p class="hint">Say something to start the conversation.</p>
       }
       @if (store.error()) {
@@ -102,10 +109,56 @@ import { ToolChip } from './tool-chip';
       margin: auto;
     }
 
-    .hint--thinking {
+    .activity {
       align-self: flex-start;
+      display: flex;
+      align-items: center;
+      gap: 0.45em;
       margin: 0;
-      text-align: left;
+      opacity: 0.6;
+      font-size: 0.85em;
+    }
+
+    .activity__dots {
+      display: inline-flex;
+      gap: 0.22em;
+    }
+
+    .activity__dots span {
+      width: 0.34em;
+      height: 0.34em;
+      border-radius: 50%;
+      background: currentColor;
+      animation: activity-pulse 1.2s ease-in-out infinite;
+    }
+
+    .activity__dots span:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .activity__dots span:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @keyframes activity-pulse {
+      0%,
+      70%,
+      100% {
+        opacity: 0.25;
+      }
+      35% {
+        opacity: 1;
+      }
+    }
+
+    // Motion is the whole point of this indicator, so when it is not
+    // available the dots stay fully lit rather than vanishing — the label
+    // beside them still says what is happening.
+    @media (prefers-reduced-motion: reduce) {
+      .activity__dots span {
+        animation: none;
+        opacity: 0.7;
+      }
     }
 
     .tool-chips {
@@ -137,6 +190,12 @@ export class MessageThread {
       this.store.messages();
       this.store.streamingText();
       this.store.isStreaming();
+      // The indicator and the tool chips change the thread's height on
+      // their own schedule, between deltas — without reading them here the
+      // thread stops re-pinning for exactly the stretch where nothing else
+      // is arriving to re-pin it.
+      this.store.streamingToolCalls();
+      this.store.activityLabel();
       // The keyboard opening shortens the thread; without re-pinning, the
       // last message slides up out of view exactly when the user is about
       // to reply to it.
