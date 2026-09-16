@@ -14,7 +14,7 @@ describe('completeTask', () => {
 
   it('patches the task to completed on the default list', async () => {
     const mock = respondWith(200);
-    await completeTask('at-1', 't 1');
+    await completeTask('at-1', '@default', 't 1');
 
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
@@ -31,14 +31,22 @@ describe('completeTask', () => {
     );
   });
 
+  it('patches on whichever list the task lives on', async () => {
+    const mock = respondWith(200);
+    await completeTask('at-1', 'MTIzNA', 't1');
+
+    const [url] = mock.mock.calls[0] as [string];
+    expect(url).toBe('https://tasks.googleapis.com/tasks/v1/lists/MTIzNA/tasks/t1');
+  });
+
   it('treats a missing task as success', async () => {
     respondWith(404);
-    await expect(completeTask('at', 't1')).resolves.toBeUndefined();
+    await expect(completeTask('at', '@default', 't1')).resolves.toBeUndefined();
   });
 
   it('throws on any other failure', async () => {
     respondWith(500);
-    await expect(completeTask('at', 't1')).rejects.toThrow(
+    await expect(completeTask('at', '@default', 't1')).rejects.toThrow(
       'Tasks complete failed (500)',
     );
   });

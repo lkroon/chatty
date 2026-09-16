@@ -40,7 +40,7 @@ export interface BriefingEvent {
 }
 
 /**
- * One task from the account's default Google Tasks list.
+ * One task from any of the account's Google Tasks lists.
  *
  * Tasks due today, overdue, or undated reach Today. A future-dated task does
  * not: it belongs to the day it is due. Undated tasks are included because
@@ -50,6 +50,14 @@ export interface BriefingEvent {
 export interface BriefingTask {
   id: string;
   title: string;
+  /**
+   * The Google task list this task lives on. Needed to complete it: the
+   * Tasks API addresses a task as list + id, and an id is only unique
+   * within its list.
+   */
+  listId: string;
+  /** The list's own name, shown as the row's category chip. */
+  listTitle: string;
   /** `YYYY-MM-DD`, or null for a task with no due date. */
   due: string | null;
   /** True when `due` is set and earlier than the briefing's `date`. */
@@ -68,6 +76,9 @@ export interface BriefingTask {
 export interface BriefingDoneTask {
   id: string;
   title: string;
+  /** The list it was finished on, carried for the same reason as on BriefingTask. */
+  listId: string;
+  listTitle: string;
   /** RFC3339 in UTC, as Google records it. Rendered in the briefing's zone. */
   completedAt: string;
 }

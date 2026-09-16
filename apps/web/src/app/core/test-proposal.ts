@@ -16,6 +16,7 @@ export function testProposalCard(overrides: Partial<ProposalCard> = {}): Proposa
       { label: 'When', value: 'Tue 8 Sep 2026, 15:00 – 15:45' },
       { label: 'Where', value: 'Kerkstraat 1' },
     ],
+    chip: null,
     link: null,
     error: null,
     confirmable: true,

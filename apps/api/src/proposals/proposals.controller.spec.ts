@@ -9,6 +9,7 @@ const card: ProposalCard = {
   status: 'executed',
   title: 'Dentist',
   fields: [],
+  chip: null,
   link: null,
   error: null,
   confirmable: false,

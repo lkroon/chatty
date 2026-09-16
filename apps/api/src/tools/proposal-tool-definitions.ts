@@ -44,13 +44,18 @@ export const PROPOSAL_TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'create_task',
       description:
-        'Propose a task on the user\'s default Google Tasks list. This does NOT create anything: it shows the user a card they must confirm. After calling it, say what you proposed and that it is awaiting their confirmation.',
+        'Propose a task on one of the user\'s Google Tasks lists. This does NOT create anything: it shows the user a card they must confirm. After calling it, say what you proposed and that it is awaiting their confirmation.',
       parameters: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'What needs doing.' },
           due: { type: 'string', description: 'Optional due date, "YYYY-MM-DD".' },
           notes: { type: 'string', description: 'Optional notes.' },
+          list: {
+            type: 'string',
+            description:
+              'Optional category: the name of the task list this belongs on, e.g. "Work". Use one of the lists named in your instructions whenever the user means one of them. A name that is not one of those is proposed as a NEW list, which the user creates by confirming the card — so only do that when they clearly want a category they do not have yet. Omit it for their default list.',
+          },
         },
         required: ['title'],
       },

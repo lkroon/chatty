@@ -55,14 +55,33 @@ function calendarFields(payload: CalendarEventPayload): ProposalField[] {
   return fields;
 }
 
+/**
+ * The list is a field as well as the header chip.
+ *
+ * The chip is what you see at a glance; the field is what survives a settled
+ * card, where the chip has done its job and the fields are the whole record
+ * of what was written.
+ */
 function taskFields(payload: TaskPayload): ProposalField[] {
   const fields: ProposalField[] = [
+    { label: 'List', value: listLabel(payload) },
     { label: 'Due', value: payload.due ? formatDatePart(payload.due) : 'No due date' },
   ];
   if (payload.notes) {
     fields.push({ label: 'Notes', value: truncate(payload.notes, MESSAGE_PREVIEW_MAX) });
   }
   return fields;
+}
+
+/**
+ * "Work", or "Gardening (new list)" for a list that does not exist yet.
+ *
+ * The suffix is not decoration: confirming this card creates that list, and
+ * a user who has never heard of a "Gardening" list has to be told that is
+ * what they are about to make.
+ */
+function listLabel(payload: TaskPayload): string {
+  return payload.listId === null ? `${payload.listTitle} (new list)` : payload.listTitle;
 }
 
 /**
@@ -108,6 +127,7 @@ export function toProposalCard(row: ProposalRow, now: Date = new Date()): Propos
 
   let title: string;
   let fields: ProposalField[];
+  let chip: string | null = null;
   if (row.kind === 'calendar_event') {
     const payload = row.payload as CalendarEventPayload;
     title = payload.title;
@@ -116,6 +136,7 @@ export function toProposalCard(row: ProposalRow, now: Date = new Date()): Propos
     const payload = row.payload as TaskPayload;
     title = payload.title;
     fields = taskFields(payload);
+    chip = listLabel(payload);
   } else {
     const payload = row.payload as EmailPayload;
     title = payload.subject;
@@ -128,6 +149,7 @@ export function toProposalCard(row: ProposalRow, now: Date = new Date()): Propos
     status,
     title,
     fields,
+    chip,
     link: row.externalLink,
     error,
     confirmable:

@@ -22,11 +22,13 @@ export class RealBriefingApi implements BriefingApi {
     return from(this.getJson<BriefingItems>('/api/briefing/items'));
   }
 
-  completeTask(id: string): Observable<void> {
+  completeTask(id: string, listId: string): Observable<void> {
     return from(
-      this.request(`/api/tasks/${encodeURIComponent(id)}/complete`, { method: 'POST' }).then(
-        () => undefined,
-      ),
+      this.request(`/api/tasks/${encodeURIComponent(id)}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listId }),
+      }).then(() => undefined),
     );
   }
 

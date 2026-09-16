@@ -4,10 +4,12 @@ import { NotConnectedError } from '../google/errors';
 import { GoogleConnectionsRepository } from '../google/google-connections.repository';
 import { REQUIRED_SCOPE_BY_KIND } from '../google/google-oauth';
 import { GoogleTokenService } from '../google/google-token.service';
+import { DEFAULT_LIST_ID, matchTaskList, type TaskList } from '../tasks/task-lists';
+import { TaskListsService } from '../tasks/task-lists.service';
 import type { ProposalToolOutcome, ProposalToolPort } from '../tools/proposal-tool-port';
 import { toProposalCard } from './proposal-card';
 import { executeProposal } from './proposal-executors';
-import { validateProposalArguments } from './proposal-payloads';
+import { validateProposalArguments, type TaskPayload } from './proposal-payloads';
 import { RETRYABLE_KINDS, appTimeZone } from './proposal-policy';
 import { ProposalsRepository } from './proposals.repository';
 
@@ -42,6 +44,7 @@ export class ProposalsService implements ProposalToolPort {
     private readonly repository: ProposalsRepository,
     private readonly connections: GoogleConnectionsRepository,
     private readonly tokens: GoogleTokenService,
+    private readonly taskLists: TaskListsService,
   ) {}
 
   async createFromToolCall(input: {
@@ -66,6 +69,16 @@ export class ProposalsService implements ProposalToolPort {
       return validated;
     }
 
+    if (validated.kind === 'task') {
+      const resolved = await this.resolveTaskList(
+        input.accountId,
+        validated.payload as TaskPayload,
+      );
+      if (resolved.ok === false) {
+        return resolved;
+      }
+    }
+
     // Checked after validation so a malformed call still gets the more useful
     // message, and before the insert so the cap actually caps.
     const live = await this.pendingForAccount(input.accountId);
@@ -84,6 +97,61 @@ export class ProposalsService implements ProposalToolPort {
     });
     this.logger.log(`proposal ${created.id} (${created.kind}) created for account ${input.accountId}`);
     return { ok: true, card: toProposalCard(created) };
+  }
+
+  /**
+   * Fills in `listId`/`listTitle` on a task payload, in place.
+   *
+   * Three outcomes, and only one of them is a refusal:
+   *  - no list asked for → the account's default list;
+   *  - a name that matches exactly one list → that list;
+   *  - a name that matches none → `listId: null`, which the card shows as a
+   *    new list and the executor creates only after the user confirms it.
+   *
+   * An ambiguous name is the refusal. Picking between two candidates would
+   * put the task somewhere the user never named, so it comes back as a
+   * message the model retries with — the same channel a bad date uses.
+   */
+  private async resolveTaskList(
+    accountId: number,
+    payload: TaskPayload,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    let lists: TaskList[];
+    try {
+      lists = await this.taskLists.lists(accountId);
+    } catch {
+      // Google is unreachable or not connected. Confirming will fail with a
+      // message about that; guessing a list id here would only add a second
+      // wrong thing. The executor resolves the name again at write time.
+      lists = [];
+    }
+
+    if (payload.listTitle === '') {
+      // Google resolves @default to the first list, which is the one the
+      // Tasks app opens on. Its real title is what the chip must read.
+      payload.listId = DEFAULT_LIST_ID;
+      payload.listTitle = lists[0]?.title ?? 'My Tasks';
+      return { ok: true };
+    }
+
+    const match = matchTaskList(lists, payload.listTitle);
+    if (match.kind === 'ambiguous') {
+      const names = match.candidates.map((list) => `"${list.title}"`).join(', ');
+      return {
+        ok: false,
+        message: `create_task: "${payload.listTitle}" matches more than one of the user's lists (${names}). Ask the user which one they mean, then call the tool again with that exact name.`,
+      };
+    }
+    if (match.kind === 'matched') {
+      payload.listId = match.list.id;
+      payload.listTitle = match.list.title;
+      return { ok: true };
+    }
+
+    // No such list yet. The name stays as the user said it, and the card
+    // will say it is new — creating it is part of what they confirm.
+    payload.listId = null;
+    return { ok: true };
   }
 
   /**
@@ -155,6 +223,12 @@ export class ProposalsService implements ProposalToolPort {
 
     try {
       const result = await executeProposal(claimed, accessToken, appTimeZone());
+      if (claimed.kind === 'task') {
+        // A confirmed task may have created a list. Dropping the cache here
+        // is what lets the user say "the gardening task" again a second
+        // later and have it land on the list they just made.
+        this.taskLists.invalidate(accountId);
+      }
       const executed = await this.repository.markExecuted(id, result);
       this.logger.log(`proposal ${id} executed as ${result.externalId ?? 'unknown id'}`);
       return toProposalCard(executed ?? claimed);

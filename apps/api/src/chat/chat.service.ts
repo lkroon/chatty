@@ -18,6 +18,7 @@ import {
   type ToolActor,
 } from '../tools/tool-runtime';
 import { MAX_TOOL_ROUNDS, ToolBudget } from '../tools/tool-budget';
+import { TaskListsService } from '../tasks/task-lists.service';
 
 /** `Searching…` / `Reading…` / `Preparing…` — the real label arrives with the result. */
 function provisionalLabel(name: string): string {
@@ -49,6 +50,7 @@ function provisionalLabel(name: string): string {
 function buildSystemPrompt(
   toolsOffered: boolean,
   proposalToolsOffered: boolean,
+  taskLists: string[] = [],
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const base = `You are a helpful assistant in a personal chat app. Today's date is ${today}.`;
@@ -66,13 +68,25 @@ function buildSystemPrompt(
   if (!proposalToolsOffered) {
     return web;
   }
-  return (
+  const proposals =
     `${web}\n` +
     'You can also propose calendar events, tasks and emails. Those tools do not perform\n' +
     'the action: each one shows the user a card that only they can Confirm. After\n' +
     'calling one, say what you proposed and that it is waiting for their confirmation —\n' +
     'never say you created, added, scheduled or sent anything. Give times as local\n' +
-    'wall-clock values like 2026-09-08T15:00:00, with no timezone offset.'
+    'wall-clock values like 2026-09-08T15:00:00, with no timezone offset.';
+  if (taskLists.length === 0) {
+    return proposals;
+  }
+  // The user's own categories, by their own names. Without these the model
+  // has no way to know "the work task" means an existing list, and proposes
+  // a new list for a category the user already has.
+  return (
+    `${proposals}\n` +
+    `The user's task lists are: ${taskLists.join(', ')}. When they name one of these —\n` +
+    '"the work task", "on my holiday list" — pass it as create_task\'s `list` argument,\n' +
+    'spelled as above. Only pass a name that is not on that list when they clearly want\n' +
+    'a new category; the card will say it is a new list, and confirming creates it.'
   );
 }
 
@@ -92,6 +106,7 @@ export class ChatService {
     @Inject(USAGE_SERVICE) private readonly usageService: UsageService,
     private readonly opencodeService: OpencodeService,
     @Inject(TOOL_RUNTIME) private readonly toolRuntime: ToolRuntime,
+    private readonly taskLists: TaskListsService,
   ) {}
 
   isKnownModel(model: string): boolean {
@@ -168,10 +183,17 @@ export class ChatService {
         excludeMessageId: assistantMessageId,
       });
 
+      // Only asked for when a write tool could actually use it, and never
+      // allowed to fail the exchange: titlesForPrompt swallows its own
+      // errors and hands back nothing.
+      const listTitles = proposalToolsOffered
+        ? await this.taskLists.titlesForPrompt(Number(accountId))
+        : [];
+
       const messages: OpencodeMessage[] = [
         {
           role: 'system',
-          content: buildSystemPrompt(toolsOffered, proposalToolsOffered),
+          content: buildSystemPrompt(toolsOffered, proposalToolsOffered, listTitles),
         },
         ...history.map((h) => ({ role: h.role, content: h.content })),
       ];

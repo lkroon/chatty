@@ -55,11 +55,11 @@ describe('executeProposal', () => {
       .mockResolvedValue({ externalId: 'task-1', link: null });
 
     await executeProposal(
-      row({ kind: 'task', payload: { title: 'Buy milk', due: null, notes: null } }),
+      row({ kind: 'task', payload: { title: 'Buy milk', due: null, notes: null, listId: '@default', listTitle: 'My Tasks' } }),
       'at-1',
       'Europe/Amsterdam',
     );
-    expect(spy).toHaveBeenCalledWith('at-1', { title: 'Buy milk', due: null, notes: null });
+    expect(spy).toHaveBeenCalledWith('at-1', { title: 'Buy milk', due: null, notes: null, listId: '@default', listTitle: 'My Tasks' });
   });
 
   it('routes an email to the gmail writer', async () => {

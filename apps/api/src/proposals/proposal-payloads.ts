@@ -22,6 +22,17 @@ export interface TaskPayload {
   /** Plain date, "YYYY-MM-DD", or null. */
   due: string | null;
   notes: string | null;
+  /**
+   * The list this task will be written to, or **null meaning "create a list
+   * called `listTitle` first"**.
+   *
+   * Null is how a category the user does not have yet reaches them: the
+   * model may ask for one, but the name sits on the card as a new list until
+   * they confirm it. Nothing creates a list on a model's say-so alone.
+   */
+  listId: string | null;
+  /** The list's name, as it will read on the card and on Today's chip. */
+  listTitle: string;
 }
 
 export interface EmailPayload {
@@ -43,6 +54,8 @@ export type ValidationOutcome =
   | { ok: false; message: string };
 
 const TITLE_MAX = 200;
+/** Google's own cap on a task list title. */
+const LIST_TITLE_MAX = 1024;
 const TEXT_MAX = 2000;
 const BODY_MAX = 5000;
 const MAX_RECIPIENTS = 5;
@@ -164,10 +177,24 @@ function validateTask(args: Record<string, unknown>): ValidationOutcome {
     due = raw;
   }
 
+  // Shape only. Which list this name refers to — an existing one, or one
+  // that has to be created — is not knowable here: it depends on the
+  // account, so ProposalsService resolves it before the row is stored.
+  const requestedList = optionalText(args.list, LIST_TITLE_MAX);
+  if (args.list !== undefined && args.list !== null && args.list !== '' && !requestedList) {
+    return invalid(`create_task: "list" must be a list name of 1-${LIST_TITLE_MAX} characters.`);
+  }
+
   return {
     ok: true,
     kind: 'task',
-    payload: { title, due, notes: optionalText(args.notes, TEXT_MAX) },
+    payload: {
+      title,
+      due,
+      notes: optionalText(args.notes, TEXT_MAX),
+      listId: null,
+      listTitle: requestedList ?? '',
+    },
   };
 }
 

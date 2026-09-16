@@ -71,20 +71,59 @@ describe('toProposalCard', () => {
 
   it('renders a task with and without a due date', () => {
     const withDue = toProposalCard(
-      row({ kind: 'task', payload: { title: 'Renew passport', due: '2026-09-30', notes: 'Town hall' } }),
+      row({ kind: 'task', payload: {
+        title: 'Renew passport',
+        due: '2026-09-30',
+        notes: 'Town hall',
+        listId: 'work',
+        listTitle: 'Work',
+      } }),
       NOW,
     );
     expect(withDue.title).toBe('Renew passport');
     expect(withDue.fields).toEqual([
+      { label: 'List', value: 'Work' },
       { label: 'Due', value: 'Wed 30 Sep 2026' },
       { label: 'Notes', value: 'Town hall' },
     ]);
+    // Same word as the chip on Today's row, so the two surfaces agree.
+    expect(withDue.chip).toBe('Work');
 
     const withoutDue = toProposalCard(
-      row({ kind: 'task', payload: { title: 'Buy milk', due: null, notes: null } }),
+      row({ kind: 'task', payload: { title: 'Buy milk', due: null, notes: null, listId: '@default', listTitle: 'My Tasks' } }),
       NOW,
     );
-    expect(withoutDue.fields).toEqual([{ label: 'Due', value: 'No due date' }]);
+    expect(withoutDue.fields).toEqual([
+      { label: 'List', value: 'My Tasks' },
+      { label: 'Due', value: 'No due date' },
+    ]);
+  });
+
+  /**
+   * Confirming this card creates the list. A user who has never had a
+   * "Gardening" list has to be told that is what the button does.
+   */
+  it('marks a list that does not exist yet as new, on the chip and the field', () => {
+    const card = toProposalCard(
+      row({
+        kind: 'task',
+        payload: {
+          title: 'Prune the roses',
+          due: null,
+          notes: null,
+          listId: null,
+          listTitle: 'Gardening',
+        },
+      }),
+      NOW,
+    );
+    expect(card.chip).toBe('Gardening (new list)');
+    expect(card.fields[0]).toEqual({ label: 'List', value: 'Gardening (new list)' });
+  });
+
+  it('gives a calendar event no chip — it has no list to be on', () => {
+    const card = toProposalCard(row({ kind: 'calendar_event' }), NOW);
+    expect(card.chip).toBeNull();
   });
 
   it('renders an email with the subject as the title', () => {

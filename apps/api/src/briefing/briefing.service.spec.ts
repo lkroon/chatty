@@ -20,6 +20,7 @@ function pendingCard(id: string): ProposalCard {
     status: 'pending',
     title: 'Dentist',
     fields: [{ label: 'When', value: 'Tue 8 Sep 2026, 15:00 – 15:45' }],
+    chip: null,
     link: null,
     error: null,
     confirmable: true,
@@ -45,6 +46,7 @@ describe('BriefingService', () => {
   let tasksFetcher: jest.Mock;
   let doneFetcher: jest.Mock;
   let proposals: FakeProposals;
+  let taskLists: { lists: jest.Mock };
   let service: BriefingService;
 
   // The service dates the briefing from the clock, so fixtures that have to
@@ -103,6 +105,9 @@ describe('BriefingService', () => {
         { id: 'd1', title: 'Pay invoice', completedAt: `${today}T08:12:00.000Z` },
       ]);
     proposals = new FakeProposals();
+    taskLists = {
+      lists: jest.fn().mockResolvedValue([{ id: '@default', title: 'My Tasks' }]),
+    };
     service = new BriefingService(
       tokens as never,
       opencode as never,
@@ -111,6 +116,7 @@ describe('BriefingService', () => {
       tasksFetcher,
       doneFetcher,
       proposals as never,
+      taskLists as never,
     );
   });
 

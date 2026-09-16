@@ -319,13 +319,23 @@ const UNDO_WINDOW_MS = 6000;
           type="button"
           class="task__tick"
           [attr.data-testid]="'complete-' + task.id"
-          (click)="completeTask(task.id)"
+          (click)="completeTask(task.id, task.listId)"
           [attr.aria-label]="'Complete ' + task.title"
         >
           ○
         </button>
         <span class="task__body">
-          <span class="task__title">{{ task.title }}</span>
+          <span class="task__line">
+            <span class="task__title">{{ task.title }}</span>
+            <!--
+              The list the task lives on, which is the only category Google
+              Tasks has. Hidden when every task is on the same list: a chip
+              that says the same thing on every row is noise.
+            -->
+            @if (showListChips()) {
+              <span class="chip">{{ task.listTitle }}</span>
+            }
+          </span>
           @if (task.overdue) {
             <span class="task__due">Overdue · {{ task.due }}</span>
           }
@@ -649,9 +659,16 @@ const UNDO_WINDOW_MS = 6000;
       display: flex;
       flex-direction: column;
     }
+    .task__line {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
     .task__title {
       overflow-wrap: anywhere;
     }
+    /* .chip itself is global — see styles.scss. */
     .task__due {
       font-family: var(--font-meta);
       font-size: 0.72rem;
@@ -1023,6 +1040,17 @@ export class BriefingShell {
     return section.items.filter((task) => !hidden.has(task.id));
   });
 
+  /**
+   * Whether to label rows with their list.
+   *
+   * One list is the normal case and needs no chip — it would repeat the same
+   * word down the whole card. The chip appears the moment the user actually
+   * has categories to tell apart.
+   */
+  protected readonly showListChips = computed(
+    () => new Set(this.visibleTasks().map((task) => task.listTitle)).size > 1,
+  );
+
   /** Ids acted on locally, so the row leaves before the server confirms. */
   private readonly actedMailIds = signal<string[]>([]);
 
@@ -1076,12 +1104,12 @@ export class BriefingShell {
    * completing a recurring task spawns its next occurrence, so the list
    * afterwards is not simply the list minus a row.
    */
-  protected completeTask(id: string): void {
+  protected completeTask(id: string, listId: string): void {
     this.hideTask(id, 'Task completed.', () =>
       this.dismissedTaskIds.update((ids) => ids.filter((x) => x !== id)),
     );
     this.api
-      .completeTask(id)
+      .completeTask(id, listId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => this.refresh(false),

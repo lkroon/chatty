@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { GoogleModule } from '../google/google.module';
 import { OpencodeModule } from '../opencode/opencode.module';
 import { ProposalsModule } from '../proposals/proposals.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { BriefingController } from './briefing.controller';
 import {
   BriefingService,
@@ -18,7 +19,8 @@ import { fetchCompletedToday, fetchDueTasks } from './tasks-source';
 // BriefingService so its unit tests can substitute them without stubbing
 // global fetch.
 @Module({
-  imports: [GoogleModule, OpencodeModule, ProposalsModule],
+  // TasksModule for the account's lists: both task sections read every one.
+  imports: [GoogleModule, OpencodeModule, ProposalsModule, TasksModule],
   controllers: [BriefingController],
   providers: [
     BriefingService,

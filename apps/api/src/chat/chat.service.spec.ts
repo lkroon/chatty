@@ -20,6 +20,7 @@ import type {
 import type { ToolBudget } from '../tools/tool-budget';
 import { PROPOSAL_TOOL_DEFINITIONS } from '../tools/proposal-tool-definitions';
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions';
+import type { TaskListsService } from '../tasks/task-lists.service';
 
 class FakeConversationStore implements ConversationStore {
   startExchangeCalls: unknown[] = [];
@@ -145,6 +146,17 @@ function doneChunk(
   };
 }
 
+/**
+ * The account's task lists, as the prompt builder sees them. Empty unless a
+ * test is about the list vocabulary: with no lists there is no extra prompt
+ * paragraph, which is the shape every other test here asserts against.
+ */
+function fakeTaskLists(titles: string[] = []): TaskListsService {
+  return {
+    titlesForPrompt: jest.fn().mockResolvedValue(titles),
+  } as unknown as TaskListsService;
+}
+
 describe('ChatService', () => {
   const originalEnv = { ...process.env };
   afterEach(() => {
@@ -177,6 +189,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -204,6 +217,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -232,6 +246,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -268,6 +283,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -310,6 +326,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     ).run(
       'acct-1',
       { ...body, conversationId: 'conv-1' },
@@ -339,6 +356,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -377,6 +395,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -406,6 +425,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -444,6 +464,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -484,6 +505,7 @@ describe('ChatService', () => {
       usageService,
       fakeOpencodeService(stream),
       new NoopToolRuntime(),
+      fakeTaskLists(),
     );
     const events: ChatEvent[] = [];
     await service.run(
@@ -559,6 +581,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -666,6 +689,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -730,6 +754,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -791,6 +816,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       await service.run('acct-1', body, () => {}, new AbortController().signal);
 
@@ -840,6 +866,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -889,6 +916,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -938,6 +966,7 @@ describe('ChatService', () => {
         usageService,
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -973,6 +1002,7 @@ describe('ChatService', () => {
         new FakeUsageService(),
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       await service.run(
         '7',
@@ -1001,6 +1031,7 @@ describe('ChatService', () => {
         status: 'pending' as const,
         title: 'Dentist',
         fields: [],
+        chip: null,
         link: null,
         error: null,
         confirmable: true,
@@ -1040,6 +1071,7 @@ describe('ChatService', () => {
         new FakeUsageService(),
         fakeOpencodeService(stream),
         toolRuntime,
+        fakeTaskLists(),
       );
       const events: ChatEvent[] = [];
       await service.run(
@@ -1093,6 +1125,7 @@ describe('ChatService', () => {
           new FakeUsageService(),
           fakeOpencodeService(stream),
           toolRuntime,
+          fakeTaskLists(),
         );
         await service.run(
           '7',
@@ -1112,6 +1145,72 @@ describe('ChatService', () => {
 
       const withoutWrites = await collectSystemPrompt(TOOL_DEFINITIONS);
       expect(withoutWrites).not.toContain('Confirm');
+    });
+
+    /**
+     * Without the names, the model cannot know "the work task" means a list
+     * the user already has, and proposes a new one for a category they have
+     * been using for years.
+     */
+    it('names the account\'s task lists, and asks for nothing when write tools are off', async () => {
+      async function collectSystemPrompt(
+        definitions: ToolDefinition[],
+        taskLists: TaskListsService,
+      ): Promise<string> {
+        const toolRuntime = new FakeToolRuntime();
+        toolRuntime.toolDefinitions = definitions;
+        let seen = '';
+        async function* stream(
+          params: OpencodeChatCompletionParams,
+        ): AsyncGenerator<OpencodeStreamChunk> {
+          seen = String(params.messages[0].content);
+          yield doneChunk('stop');
+        }
+        await new ChatService(
+          new FakeConversationStore(),
+          new FakeUsageService(),
+          fakeOpencodeService(stream),
+          toolRuntime,
+          taskLists,
+        ).run('7', body, () => undefined, new AbortController().signal);
+        return seen;
+      }
+
+      const lists = fakeTaskLists(['My Tasks', 'Work', 'Holiday']);
+      const withLists = await collectSystemPrompt(
+        [...TOOL_DEFINITIONS, ...PROPOSAL_TOOL_DEFINITIONS],
+        lists,
+      );
+      expect(withLists).toContain('My Tasks, Work, Holiday');
+
+      // No write tools, no list argument to fill — so nothing is asked of
+      // Google on a path that could never use the answer.
+      const readOnly = fakeTaskLists(['Work']);
+      const withoutWrites = await collectSystemPrompt(TOOL_DEFINITIONS, readOnly);
+      expect(withoutWrites).not.toContain('Work');
+      expect(readOnly.titlesForPrompt).not.toHaveBeenCalled();
+    });
+
+    it('leaves the prompt alone when the account has no lists to name', async () => {
+      const toolRuntime = new FakeToolRuntime();
+      toolRuntime.toolDefinitions = [...TOOL_DEFINITIONS, ...PROPOSAL_TOOL_DEFINITIONS];
+      let seen = '';
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
+        seen = String(params.messages[0].content);
+        yield doneChunk('stop');
+      }
+      await new ChatService(
+        new FakeConversationStore(),
+        new FakeUsageService(),
+        fakeOpencodeService(stream),
+        toolRuntime,
+        fakeTaskLists(),
+      ).run('7', body, () => undefined, new AbortController().signal);
+
+      expect(seen).toContain('Confirm');
+      expect(seen).not.toContain('task lists are');
     });
   });
 });
