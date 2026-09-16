@@ -868,7 +868,7 @@ export class BriefingShell {
       const onDay = events.filter((event) => event.date === date);
       days.push({
         date,
-        label: offset === 1 ? 'Tomorrow' : weekdayLabel(date),
+        label: weekdayLabel(date),
         events: onDay,
         preview: onDay.length
           ? onDay
@@ -1072,7 +1072,7 @@ export class BriefingShell {
 interface AgendaDay {
   /** `YYYY-MM-DD`. */
   date: string;
-  /** "Tomorrow", or "Fri 18" for the days after it. */
+  /** The day itself, as "Thu 17" — never "Tomorrow", so the days read alike. */
   label: string;
   events: BriefingEvent[];
   /** The first titles on the day, so a closed line still says something. */
@@ -1086,7 +1086,13 @@ function addDays(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** `2026-09-18` -> `Fri 18`. Noon, so no zone shift can move the weekday. */
+/**
+ * `2026-09-18` -> `Fri 18`. Noon, so no zone shift can move the weekday.
+ *
+ * Every later day is labelled this way, tomorrow included: the card sits
+ * under today's own date, so "Tomorrow" beside "Fri 18" made two ways of
+ * naming a day out of one list.
+ */
 function weekdayLabel(isoDate: string): string {
   const date = new Date(`${isoDate}T12:00:00`);
   const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
