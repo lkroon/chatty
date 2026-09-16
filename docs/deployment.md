@@ -272,3 +272,61 @@ The model can propose a calendar event, a task or an email as a card the user mu
 Enabling write tools is a two-step rollout: deploy with `googleWriteToolsEnabled: false` first (the migration and endpoints ship inert), then flip the value and reconnect the Google account. The reverse is equally safe — turning it back off stops the tools being offered without touching any stored proposal.
 
 **The flag is not a kill switch, and this is deliberate.** It controls one thing: whether the three write tools are offered to the model. With it off nothing new can ever be proposed, but `POST /api/proposals/:id/confirm` keeps working, so a card already on screen can still be confirmed or discarded by the person looking at it. That is the safe asymmetry — turning the flag off must not strand a decision the user has already been asked to make. If you need pending proposals to go dead as well (an incident, a compromised model), discard them from the cards or add a `writeToolsEnabled()` check at the top of `ProposalsService.confirm`; there is deliberately no such check today.
+
+## Diagnosing tool failures
+
+Every failed tool call writes one row to `tool_call_errors` as it happens
+(not at the end of the exchange, so a request that dies mid-loop still
+leaves the record). The chip in the UI says *that* a call failed;
+this table says why, and carries the arguments the model produced — which
+is usually the whole answer.
+
+Metadata only, by design. There is no column for fetched page text or
+search snippets: those are ephemeral on purpose, both because they are a
+stranger's words and because a stored page is a prompt injection with a
+longer shelf life. `detail` is our own sentence about the failure, never a
+remote response body. Rows cascade away with the message, so deleting a
+conversation deletes its diagnostics too.
+
+What is failing lately, and how often:
+
+```sql
+SELECT failure_kind, tool_name, count(*), max(created_at) AS latest
+FROM tool_call_errors
+WHERE created_at > now() - interval '24 hours'
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+```
+
+The arguments behind a run of failures — the query that identified the
+streamed-tool-call bug this table was built after:
+
+```sql
+SELECT created_at, tool_name, failure_kind, raw_arguments, detail
+FROM tool_call_errors
+WHERE failure_kind = 'invalid_arguments'
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+An empty or truncated `raw_arguments` across several calls in the same
+message points at reassembly in `OpencodeClient`, not at the model.
+
+Blocked URLs are worth reading on their own — each one is either a model
+talked into aiming at the private network or a public host redirecting
+there:
+
+```sql
+SELECT created_at, account_id, raw_arguments, detail
+FROM tool_call_errors
+WHERE failure_kind = 'blocked_url'
+ORDER BY created_at DESC;
+```
+
+The kinds are listed in `apps/api/src/tools/tool-failure-kind.ts`. There is
+deliberately no check constraint on the column: a new failure mode should
+be one line in a union type, not a migration, and an unrecognized kind is
+still a row worth having.
+
+Nothing in the running app reads this table, and there is no HTTP route to
+it — it is for whoever is holding a `psql` prompt after a bad day.

@@ -7,6 +7,7 @@ import { PostgresUsageService } from '../db/postgres-usage.service';
 import { TOOL_RUNTIME } from '../tools/tool-runtime';
 import { ToolRuntimeImpl } from '../tools/tool-runtime.impl';
 import { createSearchProvider } from '../tools/search-provider';
+import { ToolErrorsRepository } from '../tools/tool-errors.repository';
 import { ProposalsModule } from '../proposals/proposals.module';
 import { ProposalsService } from '../proposals/proposals.service';
 import { ChatController } from './chat.controller';
@@ -27,6 +28,7 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
     ChatService,
     { provide: CONVERSATION_STORE, useExisting: ConversationsService },
     { provide: USAGE_SERVICE, useExisting: PostgresUsageService },
+    ToolErrorsRepository,
     {
       // createSearchProvider() throws at construction for a bad provider
       // config — a useFactory provider runs at Nest bootstrap, so that
@@ -39,9 +41,11 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
       // anything stateful. With GOOGLE_WRITE_TOOLS_ENABLED unset, the
       // runtime does not offer those tools at all.
       provide: TOOL_RUNTIME,
-      inject: [ProposalsService],
-      useFactory: (proposals: ProposalsService) =>
-        new ToolRuntimeImpl(createSearchProvider(), proposals),
+      inject: [ProposalsService, ToolErrorsRepository],
+      useFactory: (
+        proposals: ProposalsService,
+        errorLog: ToolErrorsRepository,
+      ) => new ToolRuntimeImpl(createSearchProvider(), proposals, errorLog),
     },
   ],
 })

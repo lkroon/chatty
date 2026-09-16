@@ -50,10 +50,9 @@ export const messages = pgTable(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    conversationId: uuid('conversation_id').references(
-      () => conversations.id,
-      { onDelete: 'cascade' },
-    ),
+    conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'cascade',
+    }),
     role: text('role'),
     content: text('content'),
     model: text('model'),
@@ -103,7 +102,10 @@ export const messageToolCalls = pgTable(
       .default(sql`now()`),
   },
   (table) => [
-    check('message_tool_calls_status_check', sql`${table.status} in ('done','failed')`),
+    check(
+      'message_tool_calls_status_check',
+      sql`${table.status} in ('done','failed')`,
+    ),
     index('message_tool_calls_message_id_idx').on(table.messageId),
   ],
 );
@@ -188,6 +190,75 @@ export const proposals = pgTable(
       sql`${table.status} in ('pending','executing','executed','discarded','failed')`,
     ),
     index('proposals_account_id_status_idx').on(table.accountId, table.status),
+  ],
+);
+
+/**
+ * One row per failed tool call. Written as the failure happens, not at the
+ * end of the exchange, so a request that dies mid-loop still leaves the
+ * record behind.
+ *
+ * Metadata only, and deliberately so. `message_tool_calls` already says
+ * *that* a call failed; what was missing was *why*, and the temptation is
+ * to fix that by storing what came back. That must not happen here: tool
+ * results are ephemeral by design (see the note above `message_tool_calls`),
+ * both because a fetched page is a stranger's text we have no business
+ * keeping and because a stored page is a prompt injection with a longer
+ * shelf life. So `detail` is our own sentence about the failure, never a
+ * remote response body, and there is no column for page text or snippets.
+ *
+ * `raw_arguments` is the one thing worth keeping and the reason this table
+ * exists: the arguments the model produced are what identify a malformed
+ * tool call, and in the incident this table was built for they were logged
+ * nowhere at all. They are the model's own output rather than the user's
+ * words, but they are derived from the conversation, so they are truncated,
+ * and the row dies with the message it belongs to.
+ */
+export const toolCallErrors = pgTable(
+  'tool_call_errors',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    // ON DELETE CASCADE: deleting a conversation deletes its messages, and
+    // this goes with them. Diagnostics do not outlive the thing they are
+    // diagnostics for — that is the same bargain the rest of the
+    // transcript makes.
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    toolName: text('tool_name').notNull(),
+    /**
+     * Which way it failed — see TOOL_FAILURE_KINDS in
+     * src/tools/tool-failure-kind.ts. Intentionally NOT a check constraint:
+     * this is an append-only diagnostic log, and a new failure mode should
+     * be one line in a union type, not a migration. A kind this code does
+     * not recognize is still a row worth having.
+     */
+    failureKind: text('failure_kind').notNull(),
+    /** The model's own arguments, truncated. Never the tool's output. */
+    rawArguments: text('raw_arguments'),
+    /** Our sentence about the failure. Never a remote response body. */
+    detail: text('detail'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    index('tool_call_errors_message_id_idx').on(table.messageId),
+    // The two queries this table is for: "what is failing lately" and
+    // "what is failing for this account".
+    index('tool_call_errors_kind_created_at_idx').on(
+      table.failureKind,
+      table.createdAt,
+    ),
+    index('tool_call_errors_account_id_created_at_idx').on(
+      table.accountId,
+      table.createdAt,
+    ),
   ],
 );
 

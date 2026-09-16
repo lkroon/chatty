@@ -151,7 +151,11 @@ export class ChatService {
           (definition) => definition.function.name === 'create_calendar_event',
         );
 
-    const actor: ToolActor = { accountId: Number(accountId), conversationId };
+    const actor: ToolActor = {
+      accountId: Number(accountId),
+      conversationId,
+      messageId: assistantMessageId,
+    };
 
     try {
       const history = await this.conversationStore.getHistory({

@@ -1,10 +1,13 @@
 import type { ProposalCard } from '@contracts/proposal';
 import { ToolBudget } from './tool-budget';
 import { ToolRuntimeImpl } from './tool-runtime.impl';
-import type { ProposalToolOutcome, ProposalToolPort } from './proposal-tool-port';
+import type {
+  ProposalToolOutcome,
+  ProposalToolPort,
+} from './proposal-tool-port';
 import type { SearchProvider } from './search-provider';
 
-const ACTOR = { accountId: 7, conversationId: 'c1' };
+const ACTOR = { accountId: 7, conversationId: 'c1', messageId: 'm1' };
 
 const card: ProposalCard = {
   id: 'p1',
@@ -52,7 +55,10 @@ describe('ToolRuntimeImpl write tools', () => {
   });
 
   it('offers the write tools only when enabled and a port is wired', () => {
-    const names = () => new ToolRuntimeImpl(noSearch, port).definitions().map((d) => d.function.name);
+    const names = () =>
+      new ToolRuntimeImpl(noSearch, port)
+        .definitions()
+        .map((d) => d.function.name);
     expect(names()).toEqual([
       'web_search',
       'web_fetch',
@@ -65,10 +71,9 @@ describe('ToolRuntimeImpl write tools', () => {
     expect(names()).toEqual(['web_search', 'web_fetch']);
 
     process.env.GOOGLE_WRITE_TOOLS_ENABLED = 'true';
-    expect(new ToolRuntimeImpl(noSearch).definitions().map((d) => d.function.name)).toEqual([
-      'web_search',
-      'web_fetch',
-    ]);
+    expect(
+      new ToolRuntimeImpl(noSearch).definitions().map((d) => d.function.name),
+    ).toEqual(['web_search', 'web_fetch']);
   });
 
   it('passes the call to the port with the actor, and returns the card on the result', async () => {
@@ -83,7 +88,10 @@ describe('ToolRuntimeImpl write tools', () => {
         accountId: 7,
         conversationId: 'c1',
         toolName: 'create_calendar_event',
-        rawArguments: JSON.stringify({ title: 'Dentist', start: '2026-09-08T15:00:00' }),
+        rawArguments: JSON.stringify({
+          title: 'Dentist',
+          start: '2026-09-08T15:00:00',
+        }),
       },
     ]);
     expect(result.status).toBe('done');
@@ -112,7 +120,10 @@ describe('ToolRuntimeImpl write tools', () => {
   });
 
   it('returns a correctable failure when the port rejects the arguments', async () => {
-    port.outcome = { ok: false, message: 'create_task: "title" is required (1-200 characters).' };
+    port.outcome = {
+      ok: false,
+      message: 'create_task: "title" is required (1-200 characters).',
+    };
     const runtime = new ToolRuntimeImpl(noSearch, port);
     const result = await run(runtime, 'create_task', {});
 
@@ -124,7 +135,11 @@ describe('ToolRuntimeImpl write tools', () => {
 
   it('fails cleanly when the tool is called with no port wired', async () => {
     const runtime = new ToolRuntimeImpl(noSearch);
-    const result = await run(runtime, 'send_email', { to: 'a@x.com', subject: 'S', body: 'B' });
+    const result = await run(runtime, 'send_email', {
+      to: 'a@x.com',
+      subject: 'S',
+      body: 'B',
+    });
     expect(result.status).toBe('failed');
     expect(result.content).toContain('not available');
   });

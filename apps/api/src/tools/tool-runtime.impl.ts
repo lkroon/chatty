@@ -15,6 +15,7 @@ import {
   PROPOSAL_TOOL_LABELS,
 } from './proposal-tool-definitions';
 import type { ProposalToolPort } from './proposal-tool-port';
+import type { ToolErrorLogPort } from './tool-error-log-port';
 
 const logger = new Logger('ToolRuntime');
 
@@ -36,6 +37,7 @@ function invalidArguments(name: string): ToolExecutionResult {
     content: `Invalid arguments for ${name}. Answer with what you already have.`,
     label: `Couldn't run ${name}`,
     sources: [],
+    failureKind: 'invalid_arguments',
   };
 }
 
@@ -102,6 +104,12 @@ export class ToolRuntimeImpl implements ToolRuntime {
      * are not offered at all, so the model cannot call one.
      */
     private readonly proposals: ProposalToolPort | null = null,
+    /**
+     * Null wherever nothing is listening — every unit test that does not
+     * assert on logging, and any wiring that has no database. A failure is
+     * still a failure without it; it just goes unrecorded.
+     */
+    private readonly errorLog: ToolErrorLogPort | null = null,
   ) {}
 
   definitions(): ToolDefinition[] {
@@ -119,6 +127,7 @@ export class ToolRuntimeImpl implements ToolRuntime {
     try {
       const result = await this.dispatch(call, budget, signal, actor);
       if (result.status === 'failed') {
+        this.logFailure(call, actor, result);
         // Counted here rather than at each failure site so that every path
         // — bad arguments, blocked URL, provider down, unknown tool — is
         // charged exactly once, including the ones added later.
@@ -146,13 +155,52 @@ export class ToolRuntimeImpl implements ToolRuntime {
         `Unexpected error executing tool ${call.name}`,
         err as Error,
       );
-      return {
+      const result: ToolExecutionResult = {
         status: 'failed',
         content: `Tool ${call.name} failed unexpectedly. Answer with what you already have.`,
         label: `Couldn't run ${call.name}`,
         sources: [],
+        failureKind: 'unexpected',
       };
+      this.logFailure(call, actor, result, err as Error);
+      return result;
     }
+  }
+
+  /**
+   * Appends one failure to the error log, if there is one.
+   *
+   * Deliberately not awaited. This runs on a path where something has
+   * already gone wrong and the model is waiting for an answer it can route
+   * around the failure with — making it wait on a database write to be told
+   * so would be the diagnostic making the incident worse. The port promises
+   * not to reject; the catch here is for the promise it was never given.
+   */
+  private logFailure(
+    call: { name: string; rawArguments: string },
+    actor: ToolActor,
+    result: ToolExecutionResult,
+    thrown?: Error,
+  ): void {
+    if (!this.errorLog) {
+      return;
+    }
+    void this.errorLog
+      .record({
+        messageId: actor.messageId,
+        accountId: actor.accountId,
+        toolName: call.name,
+        failureKind: result.failureKind ?? 'unexpected',
+        rawArguments: call.rawArguments,
+        // `result.content` for everything routine — it is our own sentence
+        // about the failure, never a remote body. A thrown error is the one
+        // case where the content says only "failed unexpectedly", so the
+        // message that actually explains it comes from the exception.
+        detail: thrown ? `${thrown.name}: ${thrown.message}` : result.content,
+      })
+      .catch((err: unknown) => {
+        logger.warn(`Could not record a ${call.name} failure: ${String(err)}`);
+      });
   }
 
   private async dispatch(
@@ -190,6 +238,7 @@ export class ToolRuntimeImpl implements ToolRuntime {
       content: `Unknown tool: ${call.name}. Answer with what you already have.`,
       label: `Unknown tool`,
       sources: [],
+      failureKind: 'unknown_tool',
     };
   }
 
@@ -209,6 +258,7 @@ export class ToolRuntimeImpl implements ToolRuntime {
         content: `${call.name} is not available. Tell the user this feature is turned off.`,
         label: `Couldn't propose that ${noun}`,
         sources: [],
+        failureKind: 'tool_unavailable',
       };
     }
 
@@ -225,6 +275,7 @@ export class ToolRuntimeImpl implements ToolRuntime {
         content: `${outcome.message} Fix the arguments and call the tool again, or ask the user for what is missing.`,
         label: `Couldn't propose that ${noun}`,
         sources: [],
+        failureKind: 'proposal_rejected',
       };
     }
 
@@ -255,6 +306,7 @@ export class ToolRuntimeImpl implements ToolRuntime {
         content: `Search failed: ${(err as Error)?.message ?? 'provider unreachable'}. Answer from your own knowledge and say the lookup failed.`,
         label: `Couldn't search "${query}"`,
         sources: [],
+        failureKind: 'search_failed',
       };
     }
   }
