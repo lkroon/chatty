@@ -95,6 +95,27 @@ describeIfDocker('ConversationsService (integration)', () => {
     expect(assistantMsg.finishReason).toBeNull();
   });
 
+  it('keeps insertion order when messages share the same timestamp', async () => {
+    const result = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hello',
+    });
+    await pool.query(
+      `UPDATE messages SET created_at = '2026-09-16T12:00:00Z' WHERE conversation_id = $1`,
+      [result.conversationId],
+    );
+
+    const detail = await service.getDetailForAccount(
+      String(accountAId),
+      result.conversationId,
+    );
+    expect(detail.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+  });
+
   it('appends a new user/assistant pair to an existing conversation when conversationId is given', async () => {
     const first = await service.startExchange({
       accountId: String(accountAId),
