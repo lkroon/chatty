@@ -43,24 +43,26 @@ import { RouterLink } from '@angular/router';
     .switch {
       display: inline-flex;
       padding: 2px;
-      border-radius: 999px;
-      background: var(--oc-bg, #eef6f2);
+      border-radius: var(--oc-r-lg);
+      background: var(--oc-surface-2);
+      border: 1px solid var(--oc-border);
       flex-shrink: 0;
     }
     .switch__half {
       display: inline-flex;
       align-items: center;
-      padding: 0.24rem 0.72rem;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      font-weight: 700;
+      padding: 0.24rem 0.7rem;
+      border-radius: var(--oc-r);
+      font-family: var(--font-meta);
+      font-size: 0.75rem;
+      font-weight: 500;
       text-decoration: none;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
     .switch__half--on {
-      background: var(--oc-surface, #fff);
-      color: var(--oc-accent-ink, #7a2c22);
-      box-shadow: 0 1px 3px rgba(45, 25, 18, 0.14);
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
+      font-weight: 600;
     }
     .badge {
       display: inline-block;
@@ -68,11 +70,17 @@ import { RouterLink } from '@angular/router';
       min-width: 1.05em;
       padding: 0 0.3em;
       border-radius: 999px;
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
       font-size: 0.68em;
       line-height: 1.55;
       text-align: center;
+    }
+    /* On the active half the badge sits on the accent itself, so it swaps
+       the two colours rather than disappearing into its own background. */
+    .switch__half--on .badge {
+      background: var(--oc-on-accent);
+      color: var(--oc-accent);
     }
   `,
 })

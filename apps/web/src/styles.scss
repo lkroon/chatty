@@ -1,30 +1,60 @@
 /* Global styles. Kept minimal — this is a bare-bones app, not a design system. */
 
 :root {
-  /* Chatty Bubbles palette — mint + coral, matches manifest/theme-color.
-     Component-level --oc-* tokens below are what chat-shell, composer,
-     message-bubble etc. actually read; --color-* are the app-shell-level
-     ones (login screen, <body> background) that sit outside chat-shell. */
-  --color-primary: #ff6f59; /* coral */
-  --color-bg: #eef6f2; /* pale mint */
-  --color-surface: #ffffff;
-  --color-border: #dcece4;
-  --color-text: #23262b;
-  --color-text-muted: #6f7a76;
+  /* ---------------------------------------------------------------
+     Night Build palette. Two themes, one set of names:
 
-  --oc-bg: #eef6f2;
+       Daylight    — cool grey paper, indigo actions (the light theme)
+       Slate & Ice — blue-grey ground, ice-blue accent (the dark theme)
+
+     Components only ever read the --oc-* names below; neither theme's
+     literals appear anywhere else in the app. The bare :root block is
+     Daylight, so every token has a value before a media query or a
+     [data-theme] stamp redefines it — a token that only exists inside
+     one of those blocks renders one theme's text on the other's ground.
+
+     Resolution order: an explicit choice (ThemeService stamps
+     data-theme on <html>) beats the OS setting, in both directions.
+     --------------------------------------------------------------- */
+  --oc-bg: #eef1f6;
   --oc-surface: #ffffff;
-  --oc-border: #dcece4;
-  --oc-text: #23262b;
-  --oc-text-muted: #6f7a76;
-  --oc-accent: #ff6f59; /* coral */
-  --oc-accent-ink: #7a2c22; /* coral text-on-light, e.g. the wordmark */
-  --oc-mint: #bfe3d3;
-  --oc-yellow: #f7b733;
-  --oc-user-bubble: #ff6f59;
-  --oc-assistant-bubble: #ffffff;
-  --oc-active: #bfe3d3;
-  --oc-error: #d64545;
+  --oc-surface-2: #f7f9fc;
+  --oc-border: #d7dde8;
+  --oc-text: #131821;
+  --oc-text-muted: #5f6a7a;
+  --oc-accent: #3552d9;
+  --oc-accent-ink: #2a41ad;
+  /* Text and icons that sit *on* --oc-accent. Never #fff directly: the
+     dark theme's accent is a pale blue that white is unreadable on. */
+  --oc-on-accent: #ffffff;
+  --oc-accent-soft: #e3e8fb;
+  /* The neutral rule down the left of an assistant reply, and other
+     structural lines that should not read as accent. */
+  --oc-rule: #cfd8e8;
+  --oc-error: #c62828;
+  --oc-shadow: 0 1px 2px rgba(19, 24, 33, 0.08), 0 2px 10px rgba(19, 24, 33, 0.06);
+  --oc-shadow-lg: 14px 0 34px rgba(19, 24, 33, 0.18);
+
+  /* Square corners — the build's own choice, not a default. */
+  --oc-r: 5px;
+  --oc-r-lg: 9px;
+
+  --font-ui:
+    'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  /* Times, counts, tool lines, section labels — anything the app reports
+     rather than says. */
+  --font-meta: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* App-shell-level aliases, for the screens that sit outside the chat
+     and briefing shells (the login screen, <body> itself). */
+  --color-bg: var(--oc-bg);
+  --color-surface: var(--oc-surface);
+  --color-border: var(--oc-border);
+  --color-text: var(--oc-text);
+  --color-text-muted: var(--oc-text-muted);
+  --color-primary: var(--oc-accent);
+
   color-scheme: light;
 
   /* Published by core/viewport-fit.ts once the app boots; these are the
@@ -35,6 +65,38 @@
   --app-offset-top: 0px;
   --app-offset-left: 0px;
   --kb-safe-bottom: env(safe-area-inset-bottom);
+}
+
+@mixin slate-and-ice {
+  --oc-bg: #0e1218;
+  --oc-surface: #161c24;
+  --oc-surface-2: #1c2530;
+  --oc-border: #232b36;
+  --oc-text: #e5ecf4;
+  --oc-text-muted: #8a97a8;
+  --oc-accent: #6ea8fe;
+  --oc-accent-ink: #a9caff;
+  --oc-on-accent: #08121f;
+  --oc-accent-soft: rgba(110, 168, 254, 0.16);
+  --oc-rule: #2b3745;
+  --oc-error: #ff8c8c;
+  /* Mixed for a dark ground: the light theme's shadows are invisible here,
+     so panels lean on their border and only lifted things cast at all. */
+  --oc-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3);
+  --oc-shadow-lg: 14px 0 34px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+/* The OS setting, unless the user has explicitly chosen day. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    @include slate-and-ice;
+  }
+}
+
+/* An explicit choice of night, so the toggle wins over a light OS too. */
+:root[data-theme='dark'] {
+  @include slate-and-ice;
 }
 
 *,
@@ -49,7 +111,7 @@ body {
   /* Also on <html>, not just <body>: iOS Safari's rubber-band overscroll
      can reveal the html background past the body's edge, and this app is
      installed as an iOS home-screen PWA. */
-  background: var(--color-bg);
+  background: var(--oc-bg);
 }
 
 body {
@@ -63,17 +125,9 @@ body {
   width: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family:
-    'Plus Jakarta Sans',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
+  background: var(--oc-bg);
+  color: var(--oc-text);
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
 }
 

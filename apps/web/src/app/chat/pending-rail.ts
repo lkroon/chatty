@@ -36,27 +36,30 @@ import { RouterLink } from '@angular/router';
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin: 0 0.7rem 0.5rem;
-      padding: 0.5rem 0.6rem;
-      border-radius: 14px;
-      background: var(--oc-accent-ink, #7a2c22);
-      color: #ffeae5;
-      font-size: 0.82rem;
+      margin: 0 0.7rem 0.4rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-accent);
+      background: var(--oc-accent-soft);
+      color: var(--oc-accent-ink);
+      font-family: var(--font-meta);
+      font-size: 0.75rem;
     }
     .rail strong {
-      color: #fff;
+      color: var(--oc-text);
     }
     .rail__go {
       margin-left: auto;
       flex-shrink: 0;
       /* 16px keeps iOS from zooming the page when this is tapped next to
          the composer. */
+      font-family: var(--font-ui);
       font-size: 16px;
-      font-weight: 700;
-      padding: 0.25em 0.85em;
-      border-radius: 999px;
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      font-weight: 600;
+      padding: 0.2em 0.8em;
+      border-radius: var(--oc-r);
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
       text-decoration: none;
     }
   `,

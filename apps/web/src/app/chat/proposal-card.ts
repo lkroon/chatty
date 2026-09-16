@@ -87,37 +87,44 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
     </section>
   `,
   styles: `
+    /* Raised, and the only thing in the thread with an accent edge: a write
+       waiting on a decision is the one card that must not be skimmed past. */
     .proposal {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
-      padding: 0.75rem 0.9rem;
-      border: 1px solid var(--oc-border, #dcece4);
-      border-radius: 14px;
-      background: var(--oc-surface, #fff);
+      gap: 0.4rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--oc-border);
+      border-left: 2px solid var(--oc-accent);
+      border-radius: var(--oc-r);
+      background: var(--oc-surface);
+      box-shadow: var(--oc-shadow);
       font-size: 0.9rem;
     }
 
     .proposal--settled {
       opacity: 0.85;
+      border-left-color: var(--oc-rule);
     }
 
     .proposal--failed {
-      border-color: var(--oc-error, #ff6b6b);
+      border-color: var(--oc-error);
+      border-left-color: var(--oc-error);
     }
 
     .proposal__head {
       display: flex;
       align-items: center;
       gap: 0.5em;
-      font-weight: 700;
+      font-weight: 600;
+      color: var(--oc-accent-ink);
     }
 
     .proposal__fields {
       margin: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.2rem;
+      gap: 0.15rem;
     }
 
     .proposal__field {
@@ -127,7 +134,9 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
 
     .proposal__field dt {
       flex: 0 0 4.5rem;
-      color: var(--oc-text-muted, #6f7a76);
+      font-family: var(--font-meta);
+      font-size: 0.8em;
+      color: var(--oc-text-muted);
     }
 
     .proposal__field dd {
@@ -145,17 +154,18 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
 
     .proposal__status {
       margin: 0;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
 
     .proposal__expiry {
       margin: 0;
-      font-size: 0.85em;
-      color: var(--oc-text-muted, #6f7a76);
+      font-family: var(--font-meta);
+      font-size: 0.78em;
+      color: var(--oc-text-muted);
     }
 
     .proposal__link {
-      color: var(--oc-accent-ink, #7a2c22);
+      color: var(--oc-accent-ink);
     }
 
     .proposal__actions {
@@ -165,11 +175,12 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
 
     .proposal__actions button {
       /* 16px: anything smaller makes iOS zoom the page on focus. */
+      font-family: var(--font-ui);
       font-size: 16px;
       font-weight: 600;
-      padding: 0.45em 1.1em;
-      border-radius: 999px;
-      border: 1px solid var(--oc-border, #dcece4);
+      padding: 0.4em 1.1em;
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-border);
       cursor: pointer;
     }
 
@@ -179,14 +190,14 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
     }
 
     .proposal__confirm {
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
       border-color: transparent;
     }
 
     .proposal__discard {
       background: transparent;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
   `,
 })
@@ -215,7 +226,7 @@ export class ProposalCard {
     const now = new Date();
     const sameDay = deadline.toDateString() === now.toDateString();
     return sameDay
-      ? 'Expires today if you don\'t confirm.'
+      ? "Expires today if you don't confirm."
       : `Expires ${deadline.toLocaleDateString(undefined, { weekday: 'long' })} if you don't confirm.`;
   });
 

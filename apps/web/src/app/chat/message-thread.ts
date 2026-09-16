@@ -84,7 +84,7 @@ import { ToolChip } from './tool-chip';
     // The .thread div's own flex:1/overflow-y:auto only constrain
     // anything if this host element is itself sized within chat-shell's
     // flex column — otherwise .thread grows to fit all messages and the
-    // whole page scrolls past chat-shell's fixed-height dark background
+    // whole page scrolls past chat-shell's fixed-height background
     // onto <body>'s (see chat-shell.scss's .main min-height: 0 comment).
     :host {
       display: flex;
@@ -98,80 +98,36 @@ import { ToolChip } from './tool-chip';
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
-      padding: 1rem;
+      gap: 0.55rem;
+      padding: 0.7rem;
       box-sizing: border-box;
     }
 
     .hint {
-      opacity: 0.6;
+      color: var(--oc-text-muted);
       text-align: center;
       margin: auto;
     }
 
-    .activity {
+    .hint--thinking {
       align-self: flex-start;
-      display: flex;
-      align-items: center;
-      gap: 0.45em;
       margin: 0;
-      opacity: 0.6;
-      font-size: 0.85em;
-    }
-
-    .activity__dots {
-      display: inline-flex;
-      gap: 0.22em;
-    }
-
-    .activity__dots span {
-      width: 0.34em;
-      height: 0.34em;
-      border-radius: 50%;
-      background: currentColor;
-      animation: activity-pulse 1.2s ease-in-out infinite;
-    }
-
-    .activity__dots span:nth-child(2) {
-      animation-delay: 0.15s;
-    }
-
-    .activity__dots span:nth-child(3) {
-      animation-delay: 0.3s;
-    }
-
-    @keyframes activity-pulse {
-      0%,
-      70%,
-      100% {
-        opacity: 0.25;
-      }
-      35% {
-        opacity: 1;
-      }
-    }
-
-    // Motion is the whole point of this indicator, so when it is not
-    // available the dots stay fully lit rather than vanishing — the label
-    // beside them still says what is happening.
-    @media (prefers-reduced-motion: reduce) {
-      .activity__dots span {
-        animation: none;
-        opacity: 0.7;
-      }
+      text-align: left;
+      font-family: var(--font-meta);
+      font-size: 0.8rem;
     }
 
     .tool-chips {
       align-self: flex-start;
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
-      max-width: min(48rem, 85%);
+      gap: 0.25rem;
+      max-width: 100%;
     }
 
     .error {
       align-self: center;
-      color: var(--oc-error, #ff6b6b);
+      color: var(--oc-error);
       font-size: 0.9em;
     }
   `,

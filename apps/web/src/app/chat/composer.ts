@@ -20,11 +20,21 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
         (keydown)="onKeydown($event)"
       ></textarea>
       @if (store.isStreaming()) {
-        <button type="button" class="round-btn stop-btn" (click)="store.cancelStreaming()" aria-label="Stop">
+        <button
+          type="button"
+          class="round-btn stop-btn"
+          (click)="store.cancelStreaming()"
+          aria-label="Stop"
+        >
           <span class="stop-icon"></span>
         </button>
       } @else {
-        <button type="submit" class="round-btn send-btn" [disabled]="!draft().trim()" aria-label="Send">
+        <button
+          type="submit"
+          class="round-btn send-btn"
+          [disabled]="!draft().trim()"
+          aria-label="Send"
+        >
           <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 10l13-7-4 7 4 7-13-7z" /></svg>
         </button>
       }
@@ -35,12 +45,12 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
       display: flex;
       align-items: flex-end;
       gap: 0.5rem;
-      padding: 0.6rem 0.85rem;
+      padding: 0.5rem 0.7rem;
       /* --kb-safe-bottom is env(safe-area-inset-bottom) normally and 0 while
          the keyboard is up — see core/viewport-fit.ts. */
-      padding-bottom: calc(0.6rem + var(--kb-safe-bottom, 0px));
-      border-top: 1px solid var(--oc-border, #dcece4);
-      background: var(--oc-surface, #fff);
+      padding-bottom: calc(0.5rem + var(--kb-safe-bottom, 0px));
+      border-top: 1px solid var(--oc-border);
+      background: var(--oc-surface);
       box-sizing: border-box;
     }
 
@@ -54,23 +64,32 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
       overflow-y: auto;
       max-height: ${MAX_TEXTAREA_HEIGHT_PX}px;
       min-height: 2.4em;
-      font: inherit;
+      font-family: var(--font-ui);
       /* 16px exactly, and not a hair less: iOS Safari zooms the page in on
          focus for any smaller field, which magnifies the layout and shoves
          the send button (and the top bar) outside the visible area. */
       font-size: 16px;
-      padding: 0.6em 1em;
-      border-radius: 20px;
-      border: 1px solid var(--oc-border, #dcece4);
-      background: var(--oc-bg, #eef6f2);
-      color: inherit;
+      padding: 0.5em 0.8em;
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-border);
+      background: var(--oc-bg);
+      color: var(--oc-text);
+    }
+
+    textarea::placeholder {
+      color: var(--oc-text-muted);
+    }
+
+    textarea:focus-visible {
+      outline: none;
+      border-color: var(--oc-accent);
     }
 
     .round-btn {
       flex-shrink: 0;
       width: 2.5em;
       height: 2.5em;
-      border-radius: 50%;
+      border-radius: var(--oc-r);
       border: none;
       cursor: pointer;
       display: flex;
@@ -84,13 +103,13 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
     }
 
     .send-btn {
-      background: var(--oc-border, #dcece4);
-      color: var(--oc-text-muted, #6f7a76);
+      background: var(--oc-surface-2);
+      color: var(--oc-text-muted);
     }
 
     .send-btn:not(:disabled) {
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
     }
 
     .send-btn:disabled {
@@ -98,14 +117,15 @@ const MAX_TEXTAREA_HEIGHT_PX = 200;
     }
 
     .stop-btn {
-      background: var(--oc-accent, #ff6f59);
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
     }
 
     .stop-icon {
       width: 0.7em;
       height: 0.7em;
       border-radius: 2px;
-      background: #fff;
+      background: currentColor;
     }
   `,
 })

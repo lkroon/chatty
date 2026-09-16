@@ -33,18 +33,20 @@ import { ChatStore } from '../core/chat-store';
       flex-direction: column;
       height: 100%;
       overflow-y: auto;
-      padding: 0 0.9rem 0.9rem;
-      gap: 0.9rem;
+      padding: 0 0.7rem 0.7rem;
+      gap: 0.7rem;
       box-sizing: border-box;
     }
 
     .new-chat {
-      font: 700 0.82rem 'Plus Jakarta Sans', sans-serif;
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      font-weight: 600;
       padding: 0.7em 0.9em;
-      border-radius: 14px;
+      border-radius: var(--oc-r);
       border: none;
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
       cursor: pointer;
       text-align: center;
       flex-shrink: 0;
@@ -60,21 +62,21 @@ import { ChatStore } from '../core/chat-store';
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: 0.15rem;
     }
 
     li {
       display: flex;
       align-items: center;
-      border-radius: 14px;
+      border-radius: var(--oc-r);
     }
 
     li.active {
-      background: var(--oc-active, #bfe3d3);
+      background: var(--oc-accent-soft);
     }
 
     li.active .title {
-      color: var(--oc-accent-ink, #7a2c22);
+      color: var(--oc-accent-ink);
       font-weight: 600;
     }
 
@@ -82,7 +84,7 @@ import { ChatStore } from '../core/chat-store';
       opacity: 0.6;
       padding: 0.5em;
       font-size: 0.9em;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
 
     .title {
@@ -90,10 +92,10 @@ import { ChatStore } from '../core/chat-store';
       text-align: left;
       background: none;
       border: none;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
       font: inherit;
       font-size: 0.85rem;
-      padding: 0.7em 0.75em;
+      padding: 0.6em 0.7em;
       cursor: pointer;
       overflow: hidden;
       text-overflow: ellipsis;
