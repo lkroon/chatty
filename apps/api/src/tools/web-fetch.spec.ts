@@ -100,6 +100,7 @@ describe('fetchPage', () => {
       );
       expect(result.status).toBe('failed');
       expect(result.content).toMatch(/blocked/i);
+      expect(result.failureKind).toBe('blocked_url');
     } finally {
       await server.close();
     }
@@ -120,6 +121,7 @@ describe('fetchPage', () => {
       );
       expect(result.status).toBe('failed');
       expect(result.content).toMatch(/application\/pdf/);
+      expect(result.failureKind).toBe('unsupported_content_type');
     } finally {
       await server.close();
     }
@@ -156,6 +158,29 @@ describe('fetchPage', () => {
     }
   }, 15000);
 
+  it('labels an unreadable status as http_error, separately from the page being unreachable', async () => {
+    const server = await startFakeServer((req, res) => {
+      res.writeHead(503, { 'Content-Type': 'text/html' });
+      res.end('<html><body>down for maintenance</body></html>');
+    });
+    allowOnly(server.baseUrl);
+
+    try {
+      const result = await fetchPage(
+        server.baseUrl,
+        new ToolBudget(),
+        new AbortController().signal,
+      );
+      expect(result.status).toBe('failed');
+      // The distinction the error log is for: a site that answered 503 is
+      // a different finding from one we could not reach at all, and the
+      // chip says "Couldn't read <host>" for both.
+      expect(result.failureKind).toBe('http_error');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('claims a fetch from the budget and refuses once exhausted', async () => {
     const server = await startFakeServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -184,6 +209,7 @@ describe('fetchPage', () => {
       expect(overBudget.content).toContain(
         'Tool budget exhausted for this message',
       );
+      expect(overBudget.failureKind).toBe('budget_exhausted');
     } finally {
       await server.close();
     }

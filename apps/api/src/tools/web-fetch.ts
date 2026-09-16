@@ -9,6 +9,7 @@ import {
 } from './tool-budget';
 import { Logger } from '@nestjs/common';
 import { checkUrl } from './url-guard';
+import type { ToolFailureKind } from './tool-failure-kind';
 
 const MAX_REDIRECTS = 3;
 
@@ -43,12 +44,17 @@ function hostnameOf(rawUrl: string): string {
   }
 }
 
-function failed(rawUrl: string, message: string): ToolExecutionResult {
+function failed(
+  rawUrl: string,
+  message: string,
+  failureKind: ToolFailureKind,
+): ToolExecutionResult {
   return {
     status: 'failed',
     content: message,
     label: `Couldn't read ${hostnameOf(rawUrl)}`,
     sources: [],
+    failureKind,
   };
 }
 
@@ -140,6 +146,7 @@ export async function fetchPage(
     return failed(
       rawUrl,
       'Tool budget exhausted for this message. Answer with what you already have.',
+      'budget_exhausted',
     );
   }
 
@@ -162,7 +169,11 @@ export async function fetchPage(
         logger.warn(
           `web_fetch blocked${hop > 0 ? ` (redirect hop ${hop})` : ''}: ${currentUrl} — ${guard.reason}`,
         );
-        return failed(currentUrl, `URL blocked: ${guard.reason}`);
+        return failed(
+          currentUrl,
+          `URL blocked: ${guard.reason}`,
+          'blocked_url',
+        );
       }
 
       let response: Response;
@@ -179,6 +190,7 @@ export async function fetchPage(
         return failed(
           currentUrl,
           `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`,
+          'fetch_failed',
         );
       }
 
@@ -188,17 +200,22 @@ export async function fetchPage(
           return failed(
             currentUrl,
             `Redirect (${response.status}) with no Location header`,
+            'too_many_redirects',
           );
         }
         if (hop === MAX_REDIRECTS) {
-          return failed(currentUrl, 'Too many redirects');
+          return failed(currentUrl, 'Too many redirects', 'too_many_redirects');
         }
         currentUrl = new URL(location, currentUrl).toString();
         continue;
       }
 
       if (!response.ok) {
-        return failed(currentUrl, `Fetch failed: HTTP ${response.status}`);
+        return failed(
+          currentUrl,
+          `Fetch failed: HTTP ${response.status}`,
+          'http_error',
+        );
       }
 
       const contentType = contentTypeOf(response.headers.get('content-type'));
@@ -206,15 +223,22 @@ export async function fetchPage(
         return failed(
           currentUrl,
           `Unsupported content type: ${contentType || 'unknown'}`,
+          'unsupported_content_type',
         );
       }
 
       const body = await readBodyCapped(response, timeoutController.signal);
       if (body === null) {
-        return failed(
-          currentUrl,
-          `Page exceeds the ${FETCH_MAX_BYTES}-byte fetch limit`,
-        );
+        // readBodyCapped returns null for two different reasons, and the
+        // log is the one place the difference matters: a page nobody can
+        // read is not the same finding as a deadline we set too tight.
+        return timeoutController.signal.aborted
+          ? failed(currentUrl, 'Fetch timed out or was cancelled', 'timeout')
+          : failed(
+              currentUrl,
+              `Page exceeds the ${FETCH_MAX_BYTES}-byte fetch limit`,
+              'response_too_large',
+            );
       }
 
       const isHtml =
@@ -234,14 +258,15 @@ export async function fetchPage(
         sources,
       };
     }
-    return failed(rawUrl, 'Too many redirects');
+    return failed(rawUrl, 'Too many redirects', 'too_many_redirects');
   } catch (err) {
     if (signal.aborted || timeoutController.signal.aborted) {
-      return failed(currentUrl, 'Fetch timed out or was cancelled');
+      return failed(currentUrl, 'Fetch timed out or was cancelled', 'timeout');
     }
     return failed(
       currentUrl,
       `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`,
+      'fetch_failed',
     );
   } finally {
     clearTimeout(timer);

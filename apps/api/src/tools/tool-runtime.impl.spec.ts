@@ -1,6 +1,7 @@
 import { ToolRuntimeImpl } from './tool-runtime.impl';
 import { MAX_TOOL_FAILURES_PER_EXCHANGE, ToolBudget } from './tool-budget';
 import type { SearchProvider, SearchResult } from './search-provider';
+import type { ToolErrorLogPort, ToolErrorRecord } from './tool-error-log-port';
 
 function fakeProvider(
   fn: (query: string) => Promise<SearchResult[]>,
@@ -8,7 +9,24 @@ function fakeProvider(
   return { search: (query) => fn(query) };
 }
 
-const ACTOR = { accountId: 1, conversationId: 'c1' };
+const ACTOR = { accountId: 1, conversationId: 'c1', messageId: 'm1' };
+
+class FakeErrorLog implements ToolErrorLogPort {
+  readonly recorded: ToolErrorRecord[] = [];
+  rejectWith: Error | null = null;
+
+  async record(error: ToolErrorRecord): Promise<void> {
+    if (this.rejectWith) {
+      throw this.rejectWith;
+    }
+    this.recorded.push(error);
+  }
+}
+
+/** The log is written without being awaited, so let the microtask queue drain. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 describe('ToolRuntimeImpl', () => {
   beforeEach(() => {
@@ -194,5 +212,154 @@ describe('ToolRuntimeImpl', () => {
       ACTOR,
     );
     expect(budget.failuresRemaining).toBe(MAX_TOOL_FAILURES_PER_EXCHANGE);
+  });
+
+  describe('error log', () => {
+    it('records the arguments and the cause of a failed call', async () => {
+      const errorLog = new FakeErrorLog();
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => []),
+        null,
+        errorLog,
+      );
+      await runtime.execute(
+        { name: 'web_fetch', rawArguments: '{"url": not-json}' },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+
+      expect(errorLog.recorded.length).toBe(1);
+      expect(errorLog.recorded[0].toolName).toBe('web_fetch');
+      expect(errorLog.recorded[0].failureKind).toBe('invalid_arguments');
+      // The arguments are the evidence — without them a failed chip says
+      // only that something went wrong.
+      expect(errorLog.recorded[0].rawArguments).toBe('{"url": not-json}');
+      expect(errorLog.recorded[0].messageId).toBe('m1');
+      expect(errorLog.recorded[0].accountId).toBe(1);
+    });
+
+    it('distinguishes a provider failure from a malformed call', async () => {
+      const errorLog = new FakeErrorLog();
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => {
+          throw new Error('provider unreachable');
+        }),
+        null,
+        errorLog,
+      );
+      await runtime.execute(
+        { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+
+      expect(errorLog.recorded[0].failureKind).toBe('search_failed');
+      expect(errorLog.recorded[0].detail).toContain('provider unreachable');
+    });
+
+    it('records an unknown tool name', async () => {
+      const errorLog = new FakeErrorLog();
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => []),
+        null,
+        errorLog,
+      );
+      await runtime.execute(
+        { name: 'delete_everything', rawArguments: '{}' },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+      expect(errorLog.recorded[0].failureKind).toBe('unknown_tool');
+    });
+
+    it('records nothing for a call that succeeded', async () => {
+      const errorLog = new FakeErrorLog();
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => [
+          { title: 'T', url: 'https://x.example', snippet: 'S' },
+        ]),
+        null,
+        errorLog,
+      );
+      await runtime.execute(
+        { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+      expect(errorLog.recorded.length).toBe(0);
+    });
+
+    it('never stores tool output — only our own sentence about the failure', async () => {
+      const errorLog = new FakeErrorLog();
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => {
+          throw new Error('provider unreachable');
+        }),
+        null,
+        errorLog,
+      );
+      await runtime.execute(
+        { name: 'web_search', rawArguments: JSON.stringify({ query: 'q' }) },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+
+      // A failed result has no fetched page in it by construction, and the
+      // done path never reaches the log at all. This asserts the seam the
+      // table's privacy rests on: nothing a stranger wrote is passed in.
+      const record = errorLog.recorded[0];
+      expect(Object.keys(record).sort()).toEqual([
+        'accountId',
+        'detail',
+        'failureKind',
+        'messageId',
+        'rawArguments',
+        'toolName',
+      ]);
+      expect(record.detail).not.toContain('<untrusted-web-content>');
+    });
+
+    it('a log that rejects does not fail the tool call', async () => {
+      const errorLog = new FakeErrorLog();
+      errorLog.rejectWith = new Error('database is down');
+      const runtime = new ToolRuntimeImpl(
+        fakeProvider(async () => []),
+        null,
+        errorLog,
+      );
+      const result = await runtime.execute(
+        { name: 'web_fetch', rawArguments: '{bad' },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      await flush();
+
+      // The model still gets its failure back and can route around it. A
+      // diagnostic that can break an exchange is worse than no diagnostic.
+      expect(result.status).toBe('failed');
+      expect(result.content).toContain('Invalid arguments');
+    });
+
+    it('works with no log wired at all', async () => {
+      const runtime = new ToolRuntimeImpl(fakeProvider(async () => []));
+      const result = await runtime.execute(
+        { name: 'web_fetch', rawArguments: '{bad' },
+        new ToolBudget(),
+        new AbortController().signal,
+        ACTOR,
+      );
+      expect(result.status).toBe('failed');
+    });
   });
 });

@@ -1,6 +1,7 @@
 import type { ToolName, ToolSource } from '@contracts/chat';
 import type { ProposalCard } from '@contracts/proposal';
 import type { ToolBudget } from './tool-budget';
+import type { ToolFailureKind } from './tool-failure-kind';
 
 export interface ToolDefinition {
   type: 'function';
@@ -14,6 +15,12 @@ export interface ToolExecutionResult {
   label: string;
   sources: ToolSource[];
   status: 'done' | 'failed';
+  /**
+   * Set by every `status: 'failed'` result, by the site that knows which
+   * way it failed. Never surfaced to the model or the browser — it exists
+   * so the error log can be queried by cause instead of by prose.
+   */
+  failureKind?: ToolFailureKind;
   /**
    * Set only by the three write tools. Its presence is also what tells
    * `execute` not to wrap the content in the untrusted-web-content frame —
@@ -31,6 +38,12 @@ export interface ToolExecutionResult {
 export interface ToolActor {
   accountId: number;
   conversationId: string;
+  /**
+   * The assistant message this exchange is building. Only the error log
+   * uses it, and only so a logged failure can be found next to the
+   * conversation it happened in — and deleted with it.
+   */
+  messageId: string;
 }
 
 /**

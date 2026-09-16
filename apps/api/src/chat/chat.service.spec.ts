@@ -952,7 +952,7 @@ describe('ChatService', () => {
       expect(toolRuntime.executeCalls).toEqual([]);
     });
 
-    it('tells the tool runtime which account and conversation it is running for', async () => {
+    it('tells the tool runtime which account, conversation and message it is running for', async () => {
       const toolRuntime = new FakeToolRuntime();
       let calls = 0;
       async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
@@ -981,8 +981,10 @@ describe('ChatService', () => {
         new AbortController().signal,
       );
 
+      // messageId is the assistant message this exchange is building — the
+      // error log files a failure against it, and dies with it.
       expect(toolRuntime.actors).toEqual([
-        { accountId: 7, conversationId: 'conv-1' },
+        { accountId: 7, conversationId: 'conv-1', messageId: 'msg-1' },
       ]);
     });
 

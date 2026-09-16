@@ -7,7 +7,7 @@ import type {
 } from './proposal-tool-port';
 import type { SearchProvider } from './search-provider';
 
-const ACTOR = { accountId: 7, conversationId: 'c1' };
+const ACTOR = { accountId: 7, conversationId: 'c1', messageId: 'm1' };
 
 const card: ProposalCard = {
   id: 'p1',
