@@ -13,11 +13,14 @@ interface GoogleTask {
 }
 
 /**
- * Tasks due today or overdue, on the account's default list, soonest first.
+ * Tasks due today, overdue, or undated, on the account's default list.
+ *
+ * Ordered soonest first, with the undated ones last — they have no place on
+ * the day, so they sit below the things that do.
  *
  * The due filter is applied here rather than through the API's `dueMax`
  * parameter, because `dueMax`'s treatment of undated tasks is not documented
- * and this filter has to be exact: an undated task must never appear.
+ * and undated tasks have to survive it.
  */
 export async function fetchDueTasks(
   accessToken: string,
@@ -42,20 +45,27 @@ export async function fetchDueTasks(
 
   const body = (await response.json()) as { items?: GoogleTask[] };
   return (body.items ?? [])
-    .filter((item) => item.status === 'needsAction' && !!item.due && !!item.id)
+    .filter((item) => item.status === 'needsAction' && !!item.id)
     .map((item) => {
       // The date component is the whole meaning of `due`; the time is always
       // midnight UTC and says nothing about the user's zone.
-      const due = (item.due as string).slice(0, 10);
+      const due = item.due ? item.due.slice(0, 10) : null;
       const id = item.id as string;
       return {
         id,
         title: item.title || '(no title)',
         due,
-        overdue: due < isoDate,
+        overdue: due !== null && due < isoDate,
         notes: item.notes ?? null,
       };
     })
-    .filter((task) => task.due <= isoDate)
-    .sort((a, b) => a.due.localeCompare(b.due));
+    .filter((task) => task.due === null || task.due <= isoDate)
+    // Sorting on the raw `due` would put null first in some engines; the
+    // undated ones are pushed to the end explicitly instead.
+    .sort((a, b) => {
+      if (a.due === null || b.due === null) {
+        return a.due === b.due ? 0 : a.due === null ? 1 : -1;
+      }
+      return a.due.localeCompare(b.due);
+    });
 }

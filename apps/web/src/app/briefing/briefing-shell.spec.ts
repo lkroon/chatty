@@ -379,6 +379,21 @@ describe('BriefingShell', () => {
     expect(el.querySelector('[data-testid="complete-t1"]')).toBeTruthy();
   });
 
+  it('labels an undated task rather than leaving its line bare', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [{ id: 't1', title: 'Someday', due: null, overdue: false, notes: null }],
+      },
+    };
+    const el = setup(api);
+    expect(el.textContent).toContain('Someday');
+    expect(el.textContent).toContain('No due date');
+  });
+
   it('removes a task optimistically and calls the API', () => {
     localStorage.removeItem(BRIEFING_CACHE_KEY);
     const api = new StubApi();
