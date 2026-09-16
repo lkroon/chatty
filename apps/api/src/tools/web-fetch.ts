@@ -1,7 +1,12 @@
 import * as cheerio from 'cheerio';
 import type { ToolSource } from '@contracts/chat';
 import type { ToolExecutionResult } from './tool-runtime';
-import { ToolBudget, FETCH_MAX_BYTES, FETCH_MAX_CHARS, FETCH_TIMEOUT_MS } from './tool-budget';
+import {
+  ToolBudget,
+  FETCH_MAX_BYTES,
+  FETCH_MAX_CHARS,
+  FETCH_TIMEOUT_MS,
+} from './tool-budget';
 import { Logger } from '@nestjs/common';
 import { checkUrl } from './url-guard';
 
@@ -52,7 +57,10 @@ function contentTypeOf(header: string | null): string {
 }
 
 /** Reads a response body up to `FETCH_MAX_BYTES`, aborting the read (not just the result) past the cap. */
-async function readBodyCapped(response: Response, signal: AbortSignal): Promise<string | null> {
+async function readBodyCapped(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string | null> {
   if (!response.body) {
     return await response.text();
   }
@@ -83,7 +91,11 @@ async function readBodyCapped(response: Response, signal: AbortSignal): Promise<
 }
 
 /** Drops boilerplate, picks the main content region, collapses whitespace. */
-function extractReadableText(html: string, title: string, finalUrl: string): string {
+function extractReadableText(
+  html: string,
+  title: string,
+  finalUrl: string,
+): string {
   const $ = cheerio.load(html);
   $('script, style, noscript, svg, nav, header, footer, form, iframe').remove();
 
@@ -125,7 +137,10 @@ export async function fetchPage(
   signal: AbortSignal,
 ): Promise<ToolExecutionResult> {
   if (!budget.claimFetch()) {
-    return failed(rawUrl, 'Tool budget exhausted for this message. Answer with what you already have.');
+    return failed(
+      rawUrl,
+      'Tool budget exhausted for this message. Answer with what you already have.',
+    );
   }
 
   let currentUrl = rawUrl;
@@ -155,16 +170,25 @@ export async function fetchPage(
         response = await fetch(currentUrl, {
           redirect: 'manual',
           signal: timeoutController.signal,
-          headers: { 'User-Agent': userAgent(), Accept: ACCEPTED_CONTENT_TYPES.join(', ') },
+          headers: {
+            'User-Agent': userAgent(),
+            Accept: ACCEPTED_CONTENT_TYPES.join(', '),
+          },
         });
       } catch (err) {
-        return failed(currentUrl, `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`);
+        return failed(
+          currentUrl,
+          `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`,
+        );
       }
 
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get('location');
         if (!location) {
-          return failed(currentUrl, `Redirect (${response.status}) with no Location header`);
+          return failed(
+            currentUrl,
+            `Redirect (${response.status}) with no Location header`,
+          );
         }
         if (hop === MAX_REDIRECTS) {
           return failed(currentUrl, 'Too many redirects');
@@ -179,19 +203,30 @@ export async function fetchPage(
 
       const contentType = contentTypeOf(response.headers.get('content-type'));
       if (!ACCEPTED_CONTENT_TYPES.includes(contentType)) {
-        return failed(currentUrl, `Unsupported content type: ${contentType || 'unknown'}`);
+        return failed(
+          currentUrl,
+          `Unsupported content type: ${contentType || 'unknown'}`,
+        );
       }
 
       const body = await readBodyCapped(response, timeoutController.signal);
       if (body === null) {
-        return failed(currentUrl, `Page exceeds the ${FETCH_MAX_BYTES}-byte fetch limit`);
+        return failed(
+          currentUrl,
+          `Page exceeds the ${FETCH_MAX_BYTES}-byte fetch limit`,
+        );
       }
 
-      const isHtml = contentType === 'text/html' || contentType === 'application/xhtml+xml';
+      const isHtml =
+        contentType === 'text/html' || contentType === 'application/xhtml+xml';
       const pageTitle = isHtml ? extractTitle(body) : '';
-      const text = isHtml ? extractReadableText(body, pageTitle, currentUrl) : body;
+      const text = isHtml
+        ? extractReadableText(body, pageTitle, currentUrl)
+        : body;
 
-      const sources: ToolSource[] = [{ title: pageTitle || currentUrl, url: currentUrl }];
+      const sources: ToolSource[] = [
+        { title: pageTitle || currentUrl, url: currentUrl },
+      ];
       return {
         status: 'done',
         content: truncate(text),
@@ -204,7 +239,10 @@ export async function fetchPage(
     if (signal.aborted || timeoutController.signal.aborted) {
       return failed(currentUrl, 'Fetch timed out or was cancelled');
     }
-    return failed(currentUrl, `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`);
+    return failed(
+      currentUrl,
+      `Fetch failed: ${(err as Error)?.message ?? 'unknown error'}`,
+    );
   } finally {
     clearTimeout(timer);
     signal.removeEventListener('abort', onAbort);

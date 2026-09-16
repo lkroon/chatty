@@ -2,7 +2,11 @@ import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import * as urlGuardModule from './url-guard';
 import { fetchPage } from './web-fetch';
-import { ToolBudget, FETCH_MAX_BYTES, MAX_FETCHES_PER_EXCHANGE } from './tool-budget';
+import {
+  ToolBudget,
+  FETCH_MAX_BYTES,
+  MAX_FETCHES_PER_EXCHANGE,
+} from './tool-budget';
 
 async function startFakeServer(
   handler: http.RequestListener,
@@ -16,7 +20,8 @@ async function startFakeServer(
   };
 }
 
-const actualCheckUrl = jest.requireActual('./url-guard').checkUrl as typeof urlGuardModule.checkUrl;
+const actualCheckUrl = jest.requireActual('./url-guard')
+  .checkUrl as typeof urlGuardModule.checkUrl;
 
 /**
  * The SSRF guard correctly blocks 127.0.0.1, which is exactly what the local
@@ -27,12 +32,14 @@ const actualCheckUrl = jest.requireActual('./url-guard').checkUrl as typeof urlG
  * a redirect to a genuinely blocked address is still refused for real.
  */
 function allowOnly(baseUrl: string): jest.SpyInstance {
-  return jest.spyOn(urlGuardModule, 'checkUrl').mockImplementation(async (url: string) => {
-    if (url.startsWith(baseUrl)) {
-      return { allowed: true };
-    }
-    return actualCheckUrl(url);
-  });
+  return jest
+    .spyOn(urlGuardModule, 'checkUrl')
+    .mockImplementation(async (url: string) => {
+      if (url.startsWith(baseUrl)) {
+        return { allowed: true };
+      }
+      return actualCheckUrl(url);
+    });
 }
 
 describe('fetchPage', () => {
@@ -56,7 +63,11 @@ describe('fetchPage', () => {
     allowOnly(server.baseUrl);
 
     try {
-      const result = await fetchPage(server.baseUrl, new ToolBudget(), new AbortController().signal);
+      const result = await fetchPage(
+        server.baseUrl,
+        new ToolBudget(),
+        new AbortController().signal,
+      );
       expect(result.status).toBe('done');
       expect(result.content).toContain('The main content lives here.');
       expect(result.content).not.toContain('Home | About | Contact');
@@ -64,7 +75,9 @@ describe('fetchPage', () => {
       expect(result.content).not.toContain('Copyright nobody');
       expect(result.content).toContain('Example Page');
       expect(result.label).toBe(`Read 127.0.0.1`);
-      expect(result.sources).toEqual([{ title: 'Example Page', url: server.baseUrl }]);
+      expect(result.sources).toEqual([
+        { title: 'Example Page', url: server.baseUrl },
+      ]);
     } finally {
       await server.close();
     }
@@ -72,13 +85,19 @@ describe('fetchPage', () => {
 
   it('refuses a redirect chain that ends at a blocked address, without ever connecting to it', async () => {
     const server = await startFakeServer((req, res) => {
-      res.writeHead(302, { Location: 'http://169.254.169.254/latest/meta-data/' });
+      res.writeHead(302, {
+        Location: 'http://169.254.169.254/latest/meta-data/',
+      });
       res.end();
     });
     allowOnly(server.baseUrl);
 
     try {
-      const result = await fetchPage(server.baseUrl, new ToolBudget(), new AbortController().signal);
+      const result = await fetchPage(
+        server.baseUrl,
+        new ToolBudget(),
+        new AbortController().signal,
+      );
       expect(result.status).toBe('failed');
       expect(result.content).toMatch(/blocked/i);
     } finally {
@@ -94,7 +113,11 @@ describe('fetchPage', () => {
     allowOnly(server.baseUrl);
 
     try {
-      const result = await fetchPage(server.baseUrl, new ToolBudget(), new AbortController().signal);
+      const result = await fetchPage(
+        server.baseUrl,
+        new ToolBudget(),
+        new AbortController().signal,
+      );
       expect(result.status).toBe('failed');
       expect(result.content).toMatch(/application\/pdf/);
     } finally {
@@ -121,7 +144,11 @@ describe('fetchPage', () => {
     allowOnly(server.baseUrl);
 
     try {
-      const result = await fetchPage(server.baseUrl, new ToolBudget(), new AbortController().signal);
+      const result = await fetchPage(
+        server.baseUrl,
+        new ToolBudget(),
+        new AbortController().signal,
+      );
       expect(result.status).toBe('failed');
       expect(result.content).toMatch(/limit/i);
     } finally {
@@ -141,12 +168,22 @@ describe('fetchPage', () => {
       // Drive the budget off its own constant rather than a literal, so
       // retuning MAX_FETCHES_PER_EXCHANGE doesn't silently break this.
       for (let i = 0; i < MAX_FETCHES_PER_EXCHANGE; i++) {
-        const allowed = await fetchPage(server.baseUrl, budget, new AbortController().signal);
+        const allowed = await fetchPage(
+          server.baseUrl,
+          budget,
+          new AbortController().signal,
+        );
         expect(allowed.status).toBe('done');
       }
-      const overBudget = await fetchPage(server.baseUrl, budget, new AbortController().signal);
+      const overBudget = await fetchPage(
+        server.baseUrl,
+        budget,
+        new AbortController().signal,
+      );
       expect(overBudget.status).toBe('failed');
-      expect(overBudget.content).toContain('Tool budget exhausted for this message');
+      expect(overBudget.content).toContain(
+        'Tool budget exhausted for this message',
+      );
     } finally {
       await server.close();
     }

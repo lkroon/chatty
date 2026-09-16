@@ -50,10 +50,9 @@ export const messages = pgTable(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    conversationId: uuid('conversation_id').references(
-      () => conversations.id,
-      { onDelete: 'cascade' },
-    ),
+    conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'cascade',
+    }),
     role: text('role'),
     content: text('content'),
     model: text('model'),
@@ -103,7 +102,10 @@ export const messageToolCalls = pgTable(
       .default(sql`now()`),
   },
   (table) => [
-    check('message_tool_calls_status_check', sql`${table.status} in ('done','failed')`),
+    check(
+      'message_tool_calls_status_check',
+      sql`${table.status} in ('done','failed')`,
+    ),
     index('message_tool_calls_message_id_idx').on(table.messageId),
   ],
 );
