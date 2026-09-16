@@ -71,6 +71,8 @@ class StubApi implements BriefingApi {
   fullCalls = 0;
   itemCalls = 0;
   completed: string[] = [];
+  /** The list each completion was addressed to — a tick is nothing without it. */
+  completedLists: string[] = [];
 
   getBriefing() {
     this.fullCalls++;
@@ -85,11 +87,12 @@ class StubApi implements BriefingApi {
     const { summary, ...items } = this.briefing;
     return of(items);
   }
-  completeTask(id: string) {
+  completeTask(id: string, listId: string) {
     if (this.failCompleteTask) {
       return throwError(() => new Error('boom'));
     }
     this.completed.push(id);
+    this.completedLists.push(listId);
     return of(undefined);
   }
   mailActions: Array<{ id: string; action: string }> = [];
@@ -208,6 +211,7 @@ describe('BriefingShell', () => {
           status: 'pending' as const,
           title: 'Lunch on Thursday?',
           fields: [{ label: 'To', value: 'sanne@example.com' }],
+          chip: null,
           link: null,
           error: null,
           confirmable: true,
@@ -441,9 +445,9 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: true, notes: null },
-          { id: 't2', title: 'Pay invoice', due: TODAY_ISO, overdue: false, notes: null },
-          { id: 't3', title: 'Book Oslo hotel', due: null, overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: true, notes: null },
+          { id: 't2', title: 'Pay invoice', listId: '@default', listTitle: 'My Tasks', due: TODAY_ISO, overdue: false, notes: null },
+          { id: 't3', title: 'Book Oslo hotel', listId: '@default', listTitle: 'My Tasks', due: null, overdue: false, notes: null },
         ],
       },
     };
@@ -466,8 +470,8 @@ describe('BriefingShell', () => {
       doneToday: {
         status: 'ok',
         items: [
-          { id: 'd1', title: 'Pay invoice', completedAt: `${TODAY_ISO}T08:12:00.000Z` },
-          { id: 'd2', title: 'Book Oslo hotel', completedAt: `${TODAY_ISO}T07:00:00.000Z` },
+          { id: 'd1', title: 'Pay invoice', listId: '@default', listTitle: 'My Tasks', completedAt: `${TODAY_ISO}T08:12:00.000Z` },
+          { id: 'd2', title: 'Book Oslo hotel', listId: '@default', listTitle: 'My Tasks', completedAt: `${TODAY_ISO}T07:00:00.000Z` },
         ],
       },
     };
@@ -501,7 +505,7 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -517,7 +521,7 @@ describe('BriefingShell', () => {
       ...CONNECTED,
       tasks: {
         status: 'ok',
-        items: [{ id: 't1', title: 'Someday', due: null, overdue: false, notes: null }],
+        items: [{ id: 't1', title: 'Someday', listId: '@default', listTitle: 'My Tasks', due: null, overdue: false, notes: null }],
       },
     };
     const el = setup(api);
@@ -533,7 +537,7 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -550,7 +554,7 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -572,7 +576,7 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -601,7 +605,7 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -633,8 +637,8 @@ describe('BriefingShell', () => {
       tasks: {
         status: 'ok',
         items: [
-          { id: 't1', title: 'Renew passport', due: '2026-09-05', overdue: false, notes: null },
-          { id: 't2', title: 'Pay invoice', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't1', title: 'Renew passport', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
+          { id: 't2', title: 'Pay invoice', listId: '@default', listTitle: 'My Tasks', due: '2026-09-05', overdue: false, notes: null },
         ],
       },
     };
@@ -702,5 +706,89 @@ describe('BriefingShell', () => {
     const el = setup(api);
     (el.querySelector('[data-testid="archive-m1"]') as HTMLButtonElement).click();
     expect(api.mailActions).toEqual([{ id: 'm1', action: 'archive' }]);
+  });
+});
+
+describe('BriefingShell task categories', () => {
+  // Same reason as the suite above: a persisted briefing would otherwise be
+  // inherited by the next test.
+  beforeEach(() => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+  });
+
+  it('sends the list along with the tick, so the right list is patched', async () => {
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok',
+        items: [
+          {
+            id: 't1',
+            title: 'Mail Erna',
+            listId: 'work',
+            listTitle: 'Work',
+            due: TODAY_ISO,
+            overdue: false,
+            notes: null,
+          },
+        ],
+      },
+    };
+    const el = setup(api);
+
+    (el.querySelector('[data-testid="complete-t1"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+
+    expect(api.completed).toEqual(['t1']);
+    expect(api.completedLists).toEqual(['work']);
+  });
+
+  it('labels rows with their list only once there is more than one', () => {
+    const api = new StubApi();
+    const onOneList = {
+      ...CONNECTED,
+      tasks: {
+        status: 'ok' as const,
+        items: [
+          {
+            id: 't1',
+            title: 'Mail Erna',
+            listId: 'work',
+            listTitle: 'Work',
+            due: TODAY_ISO,
+            overdue: false,
+            notes: null,
+          },
+        ],
+      },
+    };
+    api.briefing = onOneList;
+    // One list: the chip would say the same word on every row.
+    expect(setup(api).querySelector('.chip')).toBeNull();
+
+    const api2 = new StubApi();
+    api2.briefing = {
+      ...onOneList,
+      tasks: {
+        status: 'ok',
+        items: [
+          ...onOneList.tasks.items,
+          {
+            id: 't2',
+            title: 'Book return flight from Croatia',
+            listId: 'hol',
+            listTitle: 'Holiday',
+            due: null,
+            overdue: false,
+            notes: null,
+          },
+        ],
+      },
+    };
+    const chips = Array.from(setup(api2).querySelectorAll('.chip')).map((c) =>
+      (c.textContent ?? '').trim(),
+    );
+    expect(chips).toEqual(['Work', 'Holiday']);
   });
 });

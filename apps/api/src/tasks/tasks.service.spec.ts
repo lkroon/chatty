@@ -38,15 +38,15 @@ describe('TasksService', () => {
     tokens.getAccessToken.mockResolvedValue('at-1');
     completeTaskMock.mockResolvedValue(undefined);
 
-    await service.complete(7, 't1');
+    await service.complete(7, 'work', 't1');
 
-    expect(completeTaskMock).toHaveBeenCalledWith('at-1', 't1');
+    expect(completeTaskMock).toHaveBeenCalledWith('at-1', 'work', 't1');
   });
 
   it('refuses with google_not_connected when there is no connection', async () => {
     connections.find.mockResolvedValue(null);
 
-    const err = await captureRejection(service.complete(7, 't1'));
+    const err = await captureRejection(service.complete(7, 'work', 't1'));
 
     expect(err).toBeInstanceOf(ForbiddenException);
     expect((err as ForbiddenException).message).toBe('google_not_connected');
@@ -61,7 +61,7 @@ describe('TasksService', () => {
       scopes: ['https://www.googleapis.com/auth/calendar'],
     });
 
-    const err = await captureRejection(service.complete(7, 't1'));
+    const err = await captureRejection(service.complete(7, 'work', 't1'));
 
     expect(err).toBeInstanceOf(ForbiddenException);
     expect((err as ForbiddenException).message).toBe('google_scope_missing');
@@ -77,7 +77,7 @@ describe('TasksService', () => {
     });
     tokens.getAccessToken.mockRejectedValue(new NotConnectedError());
 
-    const err = await captureRejection(service.complete(7, 't1'));
+    const err = await captureRejection(service.complete(7, 'work', 't1'));
 
     expect(err).toBeInstanceOf(ForbiddenException);
     expect((err as ForbiddenException).message).toBe('google_not_connected');
@@ -92,7 +92,7 @@ describe('TasksService', () => {
     });
     tokens.getAccessToken.mockRejectedValue(new Error('boom'));
 
-    const err = await captureRejection(service.complete(7, 't1'));
+    const err = await captureRejection(service.complete(7, 'work', 't1'));
 
     expect(err).not.toBeInstanceOf(ForbiddenException);
     expect((err as Error).message).toBe('boom');
@@ -108,7 +108,7 @@ describe('TasksService', () => {
     tokens.getAccessToken.mockResolvedValue('at-1');
     completeTaskMock.mockResolvedValue(undefined);
 
-    await service.complete(7, 't1');
+    await service.complete(7, 'work', 't1');
 
     // connections.find (and the scope check derived from it) is invoked
     // strictly before getAccessToken is ever called.

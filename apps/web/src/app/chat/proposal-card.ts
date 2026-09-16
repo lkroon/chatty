@@ -37,6 +37,14 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
       <header class="proposal__head">
         <span class="proposal__icon" aria-hidden="true">{{ icon() }}</span>
         <span class="proposal__title">{{ card().title }}</span>
+        <!--
+          The task list this will be written to, in the same chip the row on
+          Today wears. On a card that says "(new list)", this is the only
+          warning that confirming makes one.
+        -->
+        @if (card().chip) {
+          <span class="chip">{{ card().chip }}</span>
+        }
       </header>
 
       <dl class="proposal__fields">
@@ -118,6 +126,15 @@ const DONE_LABELS: Record<ProposalCardModel['kind'], string> = {
       gap: 0.5em;
       font-weight: 600;
       color: var(--oc-accent-ink);
+      /* Wraps rather than squeezing the title: a long title and a chip do
+         not share a line on a phone. */
+      flex-wrap: wrap;
+    }
+
+    /* The header is bold; the chip inside it is not. .chip itself is global
+       — see styles.scss. */
+    .proposal__head .chip {
+      font-weight: 400;
     }
 
     .proposal__fields {

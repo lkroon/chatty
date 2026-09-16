@@ -99,6 +99,24 @@
   @include slate-and-ice;
 }
 
+/* The one shared component in the app: a task's list, worn identically by
+   the row on Today and by the proposal card in the transcript. Global
+   because the two are the same object to the user, and a copy in each
+   component is how they drift apart. */
+.chip {
+  flex-shrink: 0;
+  font-family: var(--font-meta);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--oc-border);
+  background: var(--oc-surface-2);
+  color: var(--oc-text-muted);
+  white-space: nowrap;
+}
+
 *,
 *::before,
 *::after {

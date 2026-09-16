@@ -13,6 +13,7 @@ import { OpencodeService } from '../opencode/opencode.service';
 import { GoogleTokenService } from '../google/google-token.service';
 import { NotConnectedError } from '../google/errors';
 import { ProposalsService } from '../proposals/proposals.service';
+import { TaskListsService } from '../tasks/task-lists.service';
 import { fetchAgendaEvents, zoneOffset } from './calendar-source';
 import { fetchRecentMail } from './gmail-source';
 import { fetchCompletedToday, fetchDueTasks } from './tasks-source';
@@ -50,6 +51,7 @@ export class BriefingService {
     @Inject(TASKS_FETCHER) private readonly fetchTasks: TasksFetcher,
     @Inject(DONE_FETCHER) private readonly fetchDone: DoneFetcher,
     private readonly proposals: ProposalsService,
+    private readonly taskLists: TaskListsService,
   ) {}
 
   /**
@@ -84,14 +86,21 @@ export class BriefingService {
       throw err;
     }
 
+    // Both task sections read every list, so the lists are fetched once and
+    // shared. The service caches them per account, so this is usually free;
+    // when it is not, it is one request rather than two.
+    const lists = this.taskLists.lists(accountId);
+
     // Five fetches, one round trip. Proposals join the same allSettled so a
     // slow or broken proposals query costs the page nothing.
     const [calendarResult, mailResult, tasksResult, doneResult, pendingResult] =
       await Promise.allSettled([
         this.fetchEvents(accessToken, date, timeZone),
         this.fetchMail(accessToken),
-        this.fetchTasks(accessToken, date),
-        this.fetchDone(accessToken, date, zoneOffset(date, timeZone)),
+        lists.then((items) => this.fetchTasks(accessToken, date, items)),
+        lists.then((items) =>
+          this.fetchDone(accessToken, date, zoneOffset(date, timeZone), items),
+        ),
         this.proposals.pendingForAccount(accountId),
       ]);
 

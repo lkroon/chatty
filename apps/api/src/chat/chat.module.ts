@@ -9,6 +9,7 @@ import { ToolRuntimeImpl } from '../tools/tool-runtime.impl';
 import { createSearchProvider } from '../tools/search-provider';
 import { ToolErrorsRepository } from '../tools/tool-errors.repository';
 import { ProposalsModule } from '../proposals/proposals.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { ProposalsService } from '../proposals/proposals.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
@@ -22,7 +23,9 @@ import { USAGE_SERVICE } from './in-memory-usage-service';
 // in-memory classes remain useful for isolated unit tests but are not part
 // of the production module graph.
 @Module({
-  imports: [OpencodeModule, ConversationsModule, DbModule, ProposalsModule],
+  // TasksModule names the account's task lists in the system prompt, so the
+  // model proposes categories the user already has instead of inventing them.
+  imports: [OpencodeModule, ConversationsModule, DbModule, ProposalsModule, TasksModule],
   controllers: [ChatController],
   providers: [
     ChatService,

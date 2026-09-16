@@ -98,16 +98,26 @@ describe('ProposalsService', () => {
   let connections: FakeConnections;
   let tokens: FakeTokens;
   let service: ProposalsService;
+  let taskLists: { lists: jest.Mock; invalidate: jest.Mock };
   let executeSpy: jest.SpyInstance;
 
   beforeEach(() => {
     repository = new FakeRepository();
     connections = new FakeConnections();
     tokens = new FakeTokens();
+    taskLists = {
+      lists: jest.fn().mockResolvedValue([
+        { id: '@default', title: 'My Tasks' },
+        { id: 'work', title: 'Work' },
+        { id: 'hol', title: 'Holiday' },
+      ]),
+      invalidate: jest.fn(),
+    };
     service = new ProposalsService(
       repository as never,
       connections as never,
       tokens as never,
+      taskLists as never,
     );
     executeSpy = jest
       .spyOn(executors, 'executeProposal')
@@ -281,6 +291,92 @@ describe('ProposalsService', () => {
     it('404s an unknown proposal', async () => {
       repository.stored = null;
       await expect(service.discard(1, 'nope')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('the task list a create_task call asked for', () => {
+    async function propose(args: Record<string, unknown>) {
+      return service.createFromToolCall({
+        accountId: 1,
+        conversationId: 'c1',
+        toolName: 'create_task',
+        rawArguments: JSON.stringify({ title: 'Mail Erna', ...args }),
+      });
+    }
+
+    function storedPayload(): { listId: string | null; listTitle: string } {
+      return (repository.createInput as { payload: { listId: string | null; listTitle: string } })
+        .payload;
+    }
+
+    it('falls back to the default list, named as the user sees it', async () => {
+      await propose({});
+      expect(storedPayload()).toMatchObject({ listId: '@default', listTitle: 'My Tasks' });
+    });
+
+    it('matches a list by name, however the model spelled it', async () => {
+      await propose({ list: '  work ' });
+      expect(storedPayload()).toMatchObject({ listId: 'work', listTitle: 'Work' });
+    });
+
+    it('matches on a unique prefix', async () => {
+      await propose({ list: 'hol' });
+      expect(storedPayload()).toMatchObject({ listId: 'hol', listTitle: 'Holiday' });
+    });
+
+    /**
+     * Guessing between two lists would write the task somewhere the user
+     * never named. The refusal is a message the model retries with.
+     */
+    it('refuses an ambiguous name instead of picking one', async () => {
+      taskLists.lists.mockResolvedValue([
+        { id: 'h1', title: 'Holiday' },
+        { id: 'h2', title: 'Home' },
+      ]);
+
+      const outcome = await propose({ list: 'ho' });
+
+      expect(outcome.ok).toBe(false);
+      expect((outcome as { message: string }).message).toContain('more than one');
+      expect(repository.createInput).toBeNull();
+    });
+
+    it('prefers an exact name over a longer list that merely starts with it', async () => {
+      taskLists.lists.mockResolvedValue([
+        { id: 'h1', title: 'Holiday' },
+        { id: 'h2', title: 'Holiday 2027' },
+      ]);
+
+      await propose({ list: 'Holiday' });
+
+      expect(storedPayload()).toMatchObject({ listId: 'h1', listTitle: 'Holiday' });
+    });
+
+    it('proposes an unknown name as a new list rather than refusing it', async () => {
+      const outcome = await propose({ list: 'Gardening' });
+
+      expect(outcome.ok).toBe(true);
+      // Null is the card's "(new list)", and the only thing that ever
+      // creates one is the user confirming it.
+      expect(storedPayload()).toMatchObject({ listId: null, listTitle: 'Gardening' });
+    });
+
+    it('still proposes when the lists cannot be read', async () => {
+      taskLists.lists.mockRejectedValue(new Error('Task lists request failed (500)'));
+
+      const outcome = await propose({ list: 'Work' });
+
+      expect(outcome.ok).toBe(true);
+      expect(storedPayload()).toMatchObject({ listId: null, listTitle: 'Work' });
+    });
+
+    it('drops the cached lists once a confirmed task may have made one', async () => {
+      repository.stored = row({ kind: 'task', payload: { title: 'x', due: null, notes: null, listId: null, listTitle: 'Gardening' } });
+      repository.claimResult = row({ kind: 'task', status: 'executing' });
+
+      await service.confirm(1, 'p1');
+
+      expect(taskLists.invalidate).toHaveBeenCalledWith(1);
     });
   });
 });

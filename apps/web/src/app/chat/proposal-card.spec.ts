@@ -31,6 +31,17 @@ describe('ProposalCard', () => {
     expect(el.textContent).toContain('Kerkstraat 1');
   });
 
+  it('shows the task list as a chip, and shows none when there is no list', () => {
+    const withChip = setCard(
+      testProposalCard({ kind: 'task', title: 'Mail Erna', chip: 'Work' }),
+    );
+    expect(withChip.querySelector('.chip')?.textContent?.trim()).toBe('Work');
+
+    // A calendar event has no list to be on.
+    const withoutChip = setCard(testProposalCard());
+    expect(withoutChip.querySelector('.chip')).toBeNull();
+  });
+
   it('says when a pending proposal lapses, and stops saying it once settled', () => {
     const pending = setCard(testProposalCard({ expiresAt: '2026-09-08T09:59:00.000Z' }));
     expect(pending.querySelector('.proposal__expiry')!.textContent).toContain('Expires');

@@ -1,4 +1,4 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions';
 import { TasksController } from './tasks.controller';
@@ -16,13 +16,25 @@ describe('TasksController', () => {
     controller = new TasksController(service as never);
   });
 
-  it('completes the task for the session account', async () => {
-    await controller.complete(req('7'), 't1');
-    expect(service.complete).toHaveBeenCalledWith(7, 't1');
+  it('completes the task for the session account, on the list Today sent', async () => {
+    await controller.complete(req('7'), 't1', { listId: 'work' });
+    expect(service.complete).toHaveBeenCalledWith(7, 'work', 't1');
+  });
+
+  /**
+   * A tick with no list would be addressed at @default, where a task from any
+   * other list 404s — which completeTask swallows as success. Refusing here is
+   * what keeps that from looking like it worked.
+   */
+  it('refuses a request with no list', async () => {
+    await expect(controller.complete(req('7'), 't1', {})).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(service.complete).not.toHaveBeenCalled();
   });
 
   it('refuses a request with no session account', async () => {
-    await expect(controller.complete(req(), 't1')).rejects.toThrow(
+    await expect(controller.complete(req(), 't1', { listId: 'work' })).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -31,7 +43,7 @@ describe('TasksController', () => {
     service.complete.mockRejectedValue(
       new ForbiddenException('google_scope_missing'),
     );
-    await expect(controller.complete(req('7'), 't1')).rejects.toThrow(
+    await expect(controller.complete(req('7'), 't1', { listId: 'work' })).rejects.toThrow(
       ForbiddenException,
     );
   });

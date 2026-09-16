@@ -106,7 +106,7 @@ describe('briefing-cache', () => {
       items({
         doneToday: {
           status: 'ok',
-          items: [{ id: 'd1', title: 'Pay invoice', completedAt: '2026-09-08T08:00:00.000Z' }],
+          items: [{ id: 'd1', title: 'Pay invoice', listId: '@default', listTitle: 'My Tasks', completedAt: '2026-09-08T08:00:00.000Z' }],
         },
       }),
     );
@@ -119,8 +119,8 @@ describe('briefing-cache', () => {
         tasks: {
           status: 'ok',
           items: [
-            { id: 'a', title: 'A', due: '2026-09-08', overdue: false, notes: null },
-            { id: 'b', title: 'B', due: '2026-09-08', overdue: false, notes: null },
+            { id: 'a', title: 'A', listId: '@default', listTitle: 'My Tasks', due: '2026-09-08', overdue: false, notes: null },
+            { id: 'b', title: 'B', listId: '@default', listTitle: 'My Tasks', due: '2026-09-08', overdue: false, notes: null },
           ],
         },
       }),
@@ -130,8 +130,8 @@ describe('briefing-cache', () => {
         tasks: {
           status: 'ok',
           items: [
-            { id: 'b', title: 'B', due: '2026-09-08', overdue: false, notes: null },
-            { id: 'a', title: 'A', due: '2026-09-08', overdue: false, notes: null },
+            { id: 'b', title: 'B', listId: '@default', listTitle: 'My Tasks', due: '2026-09-08', overdue: false, notes: null },
+            { id: 'a', title: 'A', listId: '@default', listTitle: 'My Tasks', due: '2026-09-08', overdue: false, notes: null },
           ],
         },
       }),

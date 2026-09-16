@@ -15,6 +15,7 @@ const card: ProposalCard = {
   status: 'pending',
   title: 'Dentist',
   fields: [{ label: 'When', value: 'Tue 8 Sep 2026, 15:00 – 15:30' }],
+  chip: null,
   link: null,
   error: null,
   confirmable: true,

@@ -34,6 +34,12 @@ export interface ProposalCard {
   /** The event/task title, or the email's subject. */
   title: string;
   fields: ProposalField[];
+  /**
+   * A short category shown beside the title — the task list a task will be
+   * written to. Null for every kind that has no such thing, which today is
+   * calendar events and emails.
+   */
+  chip: string | null;
   /** Link to the created item, when Google returned one. Null otherwise. */
   link: string | null;
   /** Human explanation when status is 'failed'. Null otherwise. */

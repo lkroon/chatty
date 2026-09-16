@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { GoogleModule } from '../google/google.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { ProposalsController } from './proposals.controller';
 import { ProposalsRepository } from './proposals.repository';
 import { ProposalsService } from './proposals.service';
@@ -9,7 +10,8 @@ import { ProposalsService } from './proposals.service';
 // tool runtime as the ProposalToolPort) and the repository (ConversationsModule
 // joins proposals onto replayed tool-call chips).
 @Module({
-  imports: [DbModule, GoogleModule],
+  // TasksModule resolves the list name a create_task call asked for.
+  imports: [DbModule, GoogleModule, TasksModule],
   controllers: [ProposalsController],
   providers: [ProposalsRepository, ProposalsService],
   exports: [ProposalsService, ProposalsRepository],

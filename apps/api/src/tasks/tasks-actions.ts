@@ -1,17 +1,26 @@
-const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
+import { listSegment } from './task-lists';
+
+const TASKS_URL = 'https://tasks.googleapis.com/tasks/v1/lists';
 
 /**
- * Marks one task complete on the account's default list.
+ * Marks one task complete on the list it lives on.
  *
  * Idempotent by design, including the 404: Today renders from a cache, so the
  * UI can be behind reality, and completing something already gone must be a
  * silent success rather than an error the user has to interpret.
+ *
+ * `listId` is not optional and does not default. A task id is only unique
+ * within its list, and addressing every tick at @default is how a task on any
+ * other list gets a 404 this function then swallows — a tick that looks like
+ * it worked and changed nothing.
  */
 export async function completeTask(
   accessToken: string,
+  listId: string,
   taskId: string,
 ): Promise<void> {
-  const response = await fetch(`${TASKS_URL}/${encodeURIComponent(taskId)}`, {
+  const url = `${TASKS_URL}/${listSegment(listId)}/tasks/${encodeURIComponent(taskId)}`;
+  const response = await fetch(url, {
     method: 'PATCH',
     headers: {
       Authorization: `Bearer ${accessToken}`,

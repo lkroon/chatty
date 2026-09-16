@@ -1,4 +1,4 @@
-import { Controller, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, HttpCode, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { requireAccountId } from '../google/session-account';
 import { TasksService } from './tasks.service';
@@ -7,7 +7,11 @@ import { TasksService } from './tasks.service';
  * POST /api/tasks/:id/complete. Registered without the /api prefix;
  * main.ts's setGlobalPrefix('api') adds it, and the global AuthGuard covers it.
  *
- * No request body, and no discard route. Discarding a task from Today hides
+ * The body carries the task's list. A task id is only unique within its list,
+ * so the id in the path is not enough to address anything — Today sends the
+ * `listId` it rendered the row from.
+ *
+ * No discard route. Discarding a task from Today hides
  * it locally (the id lives in the browser cache): Google Tasks has no discard,
  * and deleting is irreversible with no undo to offer after a phone misclick.
  */
@@ -17,7 +21,15 @@ export class TasksController {
 
   @Post(':id/complete')
   @HttpCode(204)
-  async complete(@Req() req: Request, @Param('id') id: string): Promise<void> {
-    await this.tasks.complete(requireAccountId(req), id);
+  async complete(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { listId?: unknown },
+  ): Promise<void> {
+    const listId = typeof body?.listId === 'string' ? body.listId.trim() : '';
+    if (!listId) {
+      throw new BadRequestException('listId is required');
+    }
+    await this.tasks.complete(requireAccountId(req), listId, id);
   }
 }

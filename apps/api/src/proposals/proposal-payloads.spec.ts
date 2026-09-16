@@ -116,7 +116,15 @@ describe('validateProposalArguments', () => {
       ).toEqual({
         ok: true,
         kind: 'task',
-        payload: { title: 'Renew passport', due: '2026-09-30', notes: 'Town hall' },
+        payload: {
+          title: 'Renew passport',
+          due: '2026-09-30',
+          notes: 'Town hall',
+          // Which list this is depends on the account, so validation leaves
+          // it unresolved: ProposalsService fills both in before storing.
+          listId: null,
+          listTitle: '',
+        },
       });
     });
 
@@ -124,7 +132,7 @@ describe('validateProposalArguments', () => {
       expect(validateProposalArguments('create_task', { title: 'Buy milk' })).toEqual({
         ok: true,
         kind: 'task',
-        payload: { title: 'Buy milk', due: null, notes: null },
+        payload: { title: 'Buy milk', due: null, notes: null, listId: null, listTitle: '' },
       });
     });
 

@@ -19,7 +19,7 @@ export class TasksService {
    * it: an account that connected Google before the write scopes existed must
    * get a "reconnect Google" signal, not an opaque 403 from Google itself.
    */
-  async complete(accountId: number, taskId: string): Promise<void> {
+  async complete(accountId: number, listId: string, taskId: string): Promise<void> {
     const connection = await this.connections.find(accountId);
     if (!connection) {
       throw new ForbiddenException('google_not_connected');
@@ -38,6 +38,6 @@ export class TasksService {
       throw err;
     }
 
-    await completeTask(accessToken, taskId);
+    await completeTask(accessToken, listId, taskId);
   }
 }
