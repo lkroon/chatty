@@ -8,17 +8,22 @@ import { renderMarkdownToHtml } from '../core/markdown';
   imports: [],
   template: `
     <div
-      class="msg-bubble"
-      [class.msg-bubble--user]="message().role === 'user'"
-      [class.msg-bubble--assistant]="message().role === 'assistant'"
+      class="msg"
+      [class.msg--user]="message().role === 'user'"
+      [class.msg--assistant]="message().role === 'assistant'"
     >
+      <span class="msg__who">{{ message().role === 'user' ? 'You' : 'Chatty' }}</span>
       @if (message().role === 'assistant') {
-        <div class="markdown-body" [innerHTML]="renderedHtml()" (click)="onContentClick($event)"></div>
+        <div
+          class="markdown-body"
+          [innerHTML]="renderedHtml()"
+          (click)="onContentClick($event)"
+        ></div>
       } @else {
-        <div class="msg-bubble__plain">{{ message().content }}</div>
+        <div class="msg__plain">{{ message().content }}</div>
       }
       @if (message().finishReason === 'aborted') {
-        <p class="msg-bubble__note">Stopped before finishing.</p>
+        <p class="msg__note">Stopped before finishing.</p>
       }
     </div>
   `,
@@ -26,98 +31,123 @@ import { renderMarkdownToHtml } from '../core/markdown';
   // (marked + DOMPurify output), which Angular never stamps with its
   // emulated-encapsulation content attribute — scoped selectors would
   // silently fail to match it. Class names below are namespaced
-  // (`msg-bubble__*`, `markdown-body`) to avoid leaking into the rest of
+  // (`msg__*`, `markdown-body`) to avoid leaking into the rest of
   // the app now that these rules are global.
   encapsulation: ViewEncapsulation.None,
   styles: `
-    .msg-bubble {
-      max-width: min(30rem, 85%);
-      padding: 0.65rem 0.9rem;
+    /* Only the user's own messages are a block. An assistant reply runs the
+       full column width behind a rule, because a 400-word answer inside an
+       85%-width bubble is the thing that made long replies unreadable on a
+       phone. The speaker label is what a bubble's shape used to say. */
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
       line-height: 1.5;
       word-wrap: break-word;
       font-size: 0.92rem;
     }
 
+    .msg__who {
+      font-family: var(--font-meta);
+      font-size: 0.66rem;
+      color: var(--oc-text-muted);
+    }
+
     /* margin auto, not align-self: app-message-bubble (this component's
        host tag) is the actual flex item in app-message-thread's column
-       layout, not this inner div — align-self on the div would be a no-op.
-       Margin auto floats the (already max-width-capped) bubble to the
-       correct edge regardless of what kind of box its host turns out to be. */
-    .msg-bubble--user {
+       layout, not this inner div — align-self on the div would be a no-op. */
+    .msg--user {
       margin-left: auto;
-      background: var(--oc-user-bubble, #ff6f59);
-      color: #fff;
-      border-radius: 18px 18px 4px 18px;
+      align-items: flex-end;
+      max-width: min(26rem, 80%);
     }
 
-    .msg-bubble--assistant {
+    .msg--user .msg__plain,
+    .msg--user .msg__note {
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
+      border-radius: var(--oc-r);
+      padding: 0.45rem 0.7rem;
+    }
+
+    .msg--assistant {
       margin-right: auto;
-      background: var(--oc-assistant-bubble, #fff);
-      border: 1px solid var(--oc-border, #dcece4);
-      border-radius: 18px 18px 18px 4px;
+      width: 100%;
+      border-left: 2px solid var(--oc-rule);
+      padding-left: 0.6rem;
     }
 
-    .msg-bubble__plain {
+    .msg__plain {
       white-space: pre-wrap;
     }
 
-    .msg-bubble__note {
-      margin: 0.4em 0 0;
+    .msg__note {
+      margin: 0.3em 0 0;
       font-size: 0.8em;
-      opacity: 0.7;
+      color: var(--oc-text-muted);
     }
 
-    .msg-bubble .markdown-body p {
+    .msg .markdown-body p {
       margin: 0.4em 0;
     }
 
-    .msg-bubble .markdown-body p:first-child {
+    .msg .markdown-body p:first-child {
       margin-top: 0;
     }
 
-    .msg-bubble .markdown-body p:last-child {
+    .msg .markdown-body p:last-child {
       margin-bottom: 0;
     }
 
-    .msg-bubble .markdown-body pre {
+    /* One ink for code in both themes: a code block that follows the theme
+       would be near-white in Daylight, and the highlight colours marked
+       emits are mixed for a dark ground. */
+    .msg .markdown-body pre {
       overflow-x: auto;
-      padding: 0.75em;
-      border-radius: 12px;
-      background: #22252b;
-      color: #e7e7e5;
+      padding: 0.7em;
+      border-radius: var(--oc-r);
+      background: #0b0f14;
+      color: #dbe4ee;
     }
 
-    .msg-bubble .markdown-body code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    .msg .markdown-body code {
+      font-family: var(--font-meta);
       font-size: 0.85em;
     }
 
-    .msg-bubble--assistant .markdown-body :not(pre) > code {
-      background: var(--oc-bg, #eef6f2);
-      padding: 0.15em 0.4em;
-      border-radius: 4px;
+    .msg--assistant .markdown-body :not(pre) > code {
+      background: var(--oc-surface-2);
+      border: 1px solid var(--oc-border);
+      padding: 0.1em 0.35em;
+      border-radius: var(--oc-r);
     }
 
-    .msg-bubble .markdown-body .code-block {
+    .msg .markdown-body a {
+      color: var(--oc-accent-ink);
+    }
+
+    .msg .markdown-body .code-block {
       position: relative;
       margin: 0.5em 0;
     }
 
-    .msg-bubble .markdown-body .copy-btn {
+    .msg .markdown-body .copy-btn {
       position: absolute;
       top: 0.4em;
       right: 0.4em;
+      font-family: var(--font-meta);
       font-size: 0.75em;
       padding: 0.25em 0.6em;
-      border-radius: 4px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      background: rgba(255, 255, 255, 0.08);
-      color: inherit;
+      border-radius: var(--oc-r);
+      border: 1px solid rgba(219, 228, 238, 0.28);
+      background: rgba(219, 228, 238, 0.1);
+      color: #dbe4ee;
       cursor: pointer;
     }
 
-    .msg-bubble .markdown-body .copy-btn:hover {
-      background: rgba(255, 255, 255, 0.18);
+    .msg .markdown-body .copy-btn:hover {
+      background: rgba(219, 228, 238, 0.2);
     }
   `,
 })

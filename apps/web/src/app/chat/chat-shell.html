@@ -6,7 +6,13 @@
       aria-label="Toggle conversation list"
       (click)="sidebarOpen.set(!sidebarOpen())"
     >
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+      >
         <path d="M3 6h14M3 10h14M3 14h14" />
       </svg>
     </button>
@@ -24,6 +30,7 @@
       <div class="sidebar__head">
         <app-chatty-logo [size]="20" />
         <span>Chatty</span>
+        <app-theme-toggle />
         <button
           type="button"
           class="sidebar__close"

@@ -25,7 +25,11 @@ import { ChatStore } from '../core/chat-store';
         }
       </select>
       @if (selectedModelCanSearch()) {
-        <span class="model-picker__search-icon" title="This model can search the web" aria-hidden="true">
+        <span
+          class="model-picker__search-icon"
+          title="This model can search the web"
+          aria-hidden="true"
+        >
           🔍
         </span>
       }
@@ -40,20 +44,22 @@ import { ChatStore } from '../core/chat-store';
       min-width: 0;
       flex-shrink: 1;
       gap: 0.35em;
-      background: var(--oc-surface, #fff);
-      border: 1px solid var(--oc-border, #dcece4);
-      border-radius: 999px;
-      padding: 0.3em 0.7em 0.3em 0.5em;
+      background: var(--oc-surface-2);
+      border: 1px solid var(--oc-border);
+      border-radius: var(--oc-r);
+      padding: 0.25em 0.6em;
     }
 
     select {
       /* 16px, like the composer's textarea: anything smaller makes iOS
          Safari zoom the page in when the control takes focus, which pushes
          the rest of the top bar off screen. */
-      font: 600 16px 'Plus Jakarta Sans', sans-serif;
+      font-family: var(--font-meta);
+      font-size: 16px;
+      font-weight: 500;
       border: none;
       background: none;
-      color: var(--oc-accent-ink, #7a2c22);
+      color: var(--oc-text);
       min-width: 0;
       max-width: 45vw;
       text-overflow: ellipsis;
@@ -80,7 +86,8 @@ export class ModelPicker {
 
   /** True only when the currently selected model may actually receive the web_search/web_fetch tools right now. */
   protected readonly selectedModelCanSearch = computed(
-    () => this.store.models().find((m) => m.id === this.store.selectedModelId())?.toolCapable ?? false,
+    () =>
+      this.store.models().find((m) => m.id === this.store.selectedModelId())?.toolCapable ?? false,
   );
 
   protected onChange(event: Event): void {

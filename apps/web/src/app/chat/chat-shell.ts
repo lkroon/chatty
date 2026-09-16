@@ -5,6 +5,7 @@ import { CHAT_API } from '../core/chat-api';
 import { ChatStore } from '../core/chat-store';
 import { RealChatApi } from '../core/real-chat-api';
 import { ChattyLogo } from '../shared/chatty-logo';
+import { ThemeToggle } from '../shared/theme-toggle';
 import { TodayChatSwitch } from '../shared/today-chat-switch';
 import { Composer } from './composer';
 import { ConversationList } from './conversation-list';
@@ -30,6 +31,7 @@ import { PendingRail } from './pending-rail';
     ChattyLogo,
     TodayChatSwitch,
     PendingRail,
+    ThemeToggle,
   ],
   providers: [{ provide: CHAT_API, useClass: RealChatApi }, ChatStore],
   templateUrl: './chat-shell.html',

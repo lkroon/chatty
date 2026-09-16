@@ -29,7 +29,7 @@ import { ChattyLogo } from '../shared/chatty-logo';
       align-items: center;
       justify-content: center;
       padding: 1.5rem;
-      background: var(--color-bg, #eef6f2);
+      background: var(--oc-bg);
     }
 
     .login__card {
@@ -43,15 +43,15 @@ import { ChattyLogo } from '../shared/chatty-logo';
 
     .login__title {
       margin: 0.4rem 0 0;
-      font-family: 'Baloo 2', sans-serif;
       font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--oc-accent-ink, #7a2c22);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--oc-text);
     }
 
     .login__subtitle {
       margin: 0 0 0.75rem;
-      color: var(--color-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
 
     .login__button {
@@ -60,10 +60,10 @@ import { ChattyLogo } from '../shared/chatty-logo';
       justify-content: center;
       width: 100%;
       padding: 0.85rem 1.25rem;
-      border-radius: 999px;
-      background: var(--color-primary, #ff6f59);
-      color: #fff;
-      font-weight: 700;
+      border-radius: var(--oc-r);
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
+      font-weight: 600;
       text-decoration: none;
     }
 

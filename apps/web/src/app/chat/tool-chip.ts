@@ -45,16 +45,21 @@ import type { ToolCallChip } from '@contracts';
     }
   `,
   styles: `
+    /* An outlined badge, not a coloured pill: a tool call is a note about
+       how the answer was reached, and it sits directly above the answer. It
+       should be readable and then ignorable. */
     .tool-chip {
       display: inline-flex;
       align-items: center;
       gap: 0.4em;
-      padding: 0.32em 0.7em;
+      padding: 0.25em 0.75em;
       border-radius: 999px;
-      background: var(--oc-yellow, #f7b733);
-      font-weight: 600;
-      font-size: 0.78em;
-      color: #5c3c00;
+      background: var(--oc-surface-2);
+      border: 1px solid var(--oc-border);
+      color: var(--oc-text);
+      font-family: var(--font-meta);
+      font-weight: 500;
+      font-size: 0.72em;
       max-width: fit-content;
     }
 
@@ -63,24 +68,17 @@ import type { ToolCallChip } from '@contracts';
     }
 
     .tool-chip--expandable:hover {
-      filter: brightness(0.97);
+      border-color: var(--oc-accent);
+      color: var(--oc-accent-ink);
     }
 
-    .tool-chip--running {
-      background: var(--oc-surface, #fff);
-      border: 1px solid var(--oc-border, #dcece4);
-      color: var(--oc-text-muted, #6f7a76);
-    }
-
+    .tool-chip--running,
     .tool-chip--failed {
-      background: var(--oc-surface, #fff);
-      border: 1px solid var(--oc-border, #dcece4);
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
 
     .tool-chip__count {
-      opacity: 0.75;
-      font-size: 0.9em;
+      opacity: 0.7;
     }
 
     .spinner {
@@ -88,8 +86,8 @@ import type { ToolCallChip } from '@contracts';
       width: 0.8em;
       height: 0.8em;
       border-radius: 50%;
-      border: 2px solid var(--oc-border, #dcece4);
-      border-top-color: var(--oc-accent, #ff6f59);
+      border: 2px solid var(--oc-border);
+      border-top-color: var(--oc-accent);
       animation: tool-chip-spin 0.7s linear infinite;
     }
 
@@ -104,11 +102,11 @@ import type { ToolCallChip } from '@contracts';
       margin: 0.3em 0 0;
       padding: 0 0 0 1.4em;
       font-size: 0.85em;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
 
     .tool-chip__sources a {
-      color: var(--oc-accent-ink, #7a2c22);
+      color: var(--oc-accent-ink);
     }
   `,
 })

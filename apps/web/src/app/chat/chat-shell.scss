@@ -9,8 +9,8 @@
   left: var(--app-offset-left, 0px);
   width: 100%;
   height: var(--app-height, 100dvh);
-  color: var(--oc-text, #23262b);
-  background: var(--oc-bg, #eef6f2);
+  color: var(--oc-text);
+  background: var(--oc-bg);
 }
 
 .shell {
@@ -23,11 +23,11 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.9rem;
-  padding-top: calc(0.6rem + env(safe-area-inset-top));
-  border-bottom: 1px solid var(--oc-border, #dcece4);
-  background: var(--oc-surface, #fff);
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  padding-top: calc(0.45rem + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--oc-border);
+  background: var(--oc-surface);
   // A fixed-size row of a full-height flex column, so it stays put by
   // construction — no sticky positioning needed once the shell itself is
   // pinned to the visible area.
@@ -41,10 +41,10 @@
   width: 2rem;
   height: 2rem;
   flex-shrink: 0;
-  border-radius: 50%;
+  border-radius: var(--oc-r);
   border: none;
   background: none;
-  color: var(--oc-accent-ink, #7a2c22);
+  color: var(--oc-text);
   cursor: pointer;
 
   svg {
@@ -53,7 +53,7 @@
   }
 
   &:hover {
-    background: var(--oc-mint, #bfe3d3);
+    background: var(--oc-surface-2);
   }
 }
 
@@ -75,14 +75,12 @@
   position: relative;
 }
 
-// Chatty Bubbles is mobile-first: conversation history always lives in a
-// slide-in drawer (never a permanent desktop-width sidebar), regardless of
-// viewport size — see the redesign discussion this replaces the earlier
-// two-pane layout with a horizontal breakpoint.
+// Mobile-first: conversation history always lives in a slide-in drawer
+// (never a permanent desktop-width sidebar), regardless of viewport size.
 .sidebar-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(40, 22, 16, 0.38);
+  background: rgba(4, 7, 11, 0.55);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
@@ -94,10 +92,14 @@
   inset: 0 25% 0 0;
   max-width: 320px;
   z-index: 11;
-  background: var(--oc-surface, #fff);
-  border-radius: 0 20px 20px 0;
-  box-shadow: 10px 0 28px rgba(45, 25, 18, 0.16);
+  background: var(--oc-surface);
+  border-right: 1px solid var(--oc-border);
+  border-radius: 0 var(--oc-r-lg) var(--oc-r-lg) 0;
   transform: translateX(-100%);
+  // Hidden rather than merely translated off-screen: the shadow of a
+  // closed drawer still paints down the left edge of the thread, and its
+  // buttons stay in the tab order.
+  visibility: hidden;
   transition: transform 0.2s ease;
   display: flex;
   flex-direction: column;
@@ -108,10 +110,10 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.9rem 0.9rem 0.6rem;
-  font-family: 'Baloo 2', sans-serif;
-  font-weight: 700;
-  color: var(--oc-accent-ink, #7a2c22);
+  padding: 0.7rem 0.7rem 0.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--oc-text);
   flex-shrink: 0;
 
   span {
@@ -123,10 +125,10 @@
   width: 1.8rem;
   height: 1.8rem;
   flex-shrink: 0;
-  border-radius: 50%;
-  border: none;
-  background: var(--oc-bg, #eef6f2);
-  color: var(--oc-text-muted, #6f7a76);
+  border-radius: var(--oc-r);
+  border: 1px solid var(--oc-border);
+  background: var(--oc-surface-2);
+  color: var(--oc-text-muted);
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
@@ -139,6 +141,10 @@
 
 .body.sidebar-open .sidebar {
   transform: translateX(0);
+  visibility: visible;
+  // A border as well as the shadow: on the dark palette a drop shadow
+  // alone is invisible against the ground it is meant to separate from.
+  box-shadow: var(--oc-shadow-lg);
 }
 
 .main {
@@ -150,6 +156,13 @@
   // grows to fit app-message-thread's full (unbounded) content instead of
   // being capped at the space .body actually has, so app-message-thread's
   // own overflow-y: auto never kicks in and the whole page scrolls
-  // instead, past chat-shell's 100dvh dark background onto <body>'s.
+  // instead, past chat-shell's fixed-height background onto <body>'s.
   min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar-backdrop {
+    transition: none;
+  }
 }

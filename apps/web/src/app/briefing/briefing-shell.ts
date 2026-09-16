@@ -7,6 +7,7 @@ import type { Briefing, ProposalCard, ProposalKind } from '@contracts';
 import { itemFingerprint, readBriefingCache, writeBriefingCache } from '../core/briefing-cache';
 import { renderMarkdownToHtml } from '../core/markdown';
 import { ChattyLogo } from '../shared/chatty-logo';
+import { ThemeToggle } from '../shared/theme-toggle';
 import { TodayChatSwitch } from '../shared/today-chat-switch';
 import { BRIEFING_API } from './briefing-api';
 import { RealBriefingApi } from './real-briefing-api';
@@ -30,23 +31,26 @@ const UNDO_WINDOW_MS = 6000;
  */
 @Component({
   selector: 'app-briefing-shell',
-  imports: [ChattyLogo, TodayChatSwitch],
+  imports: [ChattyLogo, ThemeToggle, TodayChatSwitch],
   providers: [{ provide: BRIEFING_API, useClass: RealBriefingApi }],
   template: `
     <div class="shell">
       <header class="topbar">
         <span class="brand"><app-chatty-logo [size]="26" /></span>
         <app-today-chat-switch active="today" [pendingCount]="pendingCount()" />
-        <button
-          type="button"
-          class="refresh"
-          data-testid="refresh"
-          [disabled]="refreshing()"
-          (click)="refresh(true)"
-          aria-label="Refresh"
-        >
-          {{ refreshing() ? '…' : '↻' }}
-        </button>
+        <div class="topbar__actions">
+          <app-theme-toggle />
+          <button
+            type="button"
+            class="refresh"
+            data-testid="refresh"
+            [disabled]="refreshing()"
+            (click)="refresh(true)"
+            aria-label="Refresh"
+          >
+            {{ refreshing() ? '…' : '↻' }}
+          </button>
+        </div>
       </header>
 
       <main class="body">
@@ -254,8 +258,8 @@ const UNDO_WINDOW_MS = 6000;
       left: var(--app-offset-left, 0px);
       width: 100%;
       height: var(--app-height, 100dvh);
-      background: var(--oc-bg, #eef6f2);
-      color: var(--oc-text, #23262b);
+      background: var(--oc-bg);
+      color: var(--oc-text);
     }
     .shell {
       position: relative;
@@ -267,11 +271,11 @@ const UNDO_WINDOW_MS = 6000;
     .topbar {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      padding: 0.6rem 0.9rem;
-      padding-top: calc(0.6rem + env(safe-area-inset-top));
-      background: var(--oc-surface, #fff);
-      border-bottom: 1px solid var(--oc-border, #dcece4);
+      gap: 0.5rem;
+      padding: 0.45rem 0.7rem;
+      padding-top: calc(0.45rem + env(safe-area-inset-top));
+      background: var(--oc-surface);
+      border-bottom: 1px solid var(--oc-border);
       flex-shrink: 0;
     }
     .brand {
@@ -279,15 +283,21 @@ const UNDO_WINDOW_MS = 6000;
       align-items: center;
       flex-shrink: 0;
     }
+    .topbar__actions {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
     .refresh {
       flex-shrink: 0;
-      margin-left: auto;
       width: 44px;
       height: 44px;
-      border-radius: 999px;
-      border: 1px solid var(--oc-border, #dcece4);
-      background: var(--oc-surface, #fff);
-      color: var(--oc-accent-ink, #7a2c22);
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-border);
+      background: var(--oc-surface);
+      color: var(--oc-text-muted);
       font-size: 18px;
       cursor: pointer;
     }
@@ -299,35 +309,40 @@ const UNDO_WINDOW_MS = 6000;
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      padding: 1rem;
-      padding-bottom: calc(1rem + var(--kb-safe-bottom, 0px));
+      padding: 0.7rem;
+      padding-bottom: calc(0.7rem + var(--kb-safe-bottom, 0px));
       display: flex;
       flex-direction: column;
-      gap: 0.8rem;
+      gap: 0.55rem;
     }
     .card {
-      background: var(--oc-surface, #fff);
-      border-radius: 18px;
-      padding: 0.9rem 1rem;
+      background: var(--oc-surface);
+      border: 1px solid var(--oc-border);
+      border-radius: var(--oc-r);
+      box-shadow: var(--oc-shadow);
+      padding: 0.65rem 0.8rem;
     }
+    /* Mono rather than small caps: these label a machine-assembled section,
+       and the times and counts under them are set the same way. */
     .card h2 {
-      margin: 0 0 0.6rem;
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--oc-text-muted, #6f7a76);
+      margin: 0 0 0.5rem;
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--oc-accent-ink);
     }
     .row {
       display: flex;
       gap: 0.6rem;
-      padding: 0.35rem 0;
+      padding: 0.3rem 0;
       align-items: baseline;
     }
     .row__time {
       flex-shrink: 0;
-      font-weight: 700;
-      font-size: 0.82rem;
-      color: var(--oc-accent-ink, #7a2c22);
+      font-family: var(--font-meta);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--oc-text-muted);
     }
     .row__title {
       flex: 1;
@@ -335,33 +350,32 @@ const UNDO_WINDOW_MS = 6000;
     }
     .hint {
       margin: 0;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
     .connect {
       display: inline-flex;
       justify-content: center;
       width: 100%;
       padding: 0.8rem 1rem;
-      border-radius: 999px;
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
-      font-weight: 700;
+      border-radius: var(--oc-r);
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
+      font-weight: 600;
       text-decoration: none;
     }
     .connect-card {
       display: flex;
       flex-direction: column;
       gap: 0.6rem;
-      padding: 1.1rem 1rem;
+      padding: 0.9rem 0.9rem;
     }
     .connect-card h2 {
       margin: 0;
-      font-family: 'Baloo 2', sans-serif;
-      font-weight: 700;
-      font-size: 1.2rem;
-      text-transform: none;
-      letter-spacing: normal;
-      color: var(--oc-accent-ink, #7a2c22);
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      color: var(--oc-text);
     }
     .connect-card p {
       margin: 0;
@@ -382,13 +396,14 @@ const UNDO_WINDOW_MS = 6000;
       align-items: baseline;
     }
     .card--queue {
-      border: 1px solid var(--oc-accent, #ff6f59);
+      border-color: var(--oc-accent);
+      background: var(--oc-accent-soft);
     }
     .queue-item {
       display: flex;
       gap: 0.6rem;
       align-items: center;
-      padding: 0.35rem 0;
+      padding: 0.3rem 0;
     }
     .queue-item__kind {
       flex-shrink: 0;
@@ -400,25 +415,26 @@ const UNDO_WINDOW_MS = 6000;
       flex-direction: column;
     }
     .queue-item__meta {
-      font-size: 0.78rem;
-      color: var(--oc-text-muted, #6f7a76);
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      color: var(--oc-text-muted);
     }
     .queue-item__go {
       flex-shrink: 0;
       font-size: 16px;
-      font-weight: 700;
+      font-weight: 600;
       padding: 0.3em 0.9em;
-      border-radius: 999px;
+      border-radius: var(--oc-r);
       border: none;
-      background: var(--oc-accent, #ff6f59);
-      color: #fff;
+      background: var(--oc-accent);
+      color: var(--oc-on-accent);
       cursor: pointer;
     }
     .task {
       display: flex;
       gap: 0.6rem;
       align-items: center;
-      padding: 0.35rem 0;
+      padding: 0.3rem 0;
       min-height: 44px;
     }
     .task__tick,
@@ -426,16 +442,16 @@ const UNDO_WINDOW_MS = 6000;
       flex-shrink: 0;
       width: 44px;
       height: 44px;
-      border-radius: 999px;
+      border-radius: var(--oc-r);
       border: none;
       background: none;
       font-size: 20px;
       line-height: 1;
       cursor: pointer;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
     .task__tick {
-      color: var(--oc-accent, #ff6f59);
+      color: var(--oc-accent);
     }
     .task__body {
       flex: 1;
@@ -447,8 +463,9 @@ const UNDO_WINDOW_MS = 6000;
       overflow-wrap: anywhere;
     }
     .task__due {
-      font-size: 0.78rem;
-      color: var(--oc-error, #d64545);
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      color: var(--oc-error);
     }
 
     /* Stacked, not a single baseline row: a subject and a sender do not fit
@@ -457,7 +474,7 @@ const UNDO_WINDOW_MS = 6000;
       display: flex;
       flex-direction: column;
       gap: 0.1rem;
-      padding: 0.5rem 0;
+      padding: 0.45rem 0;
       min-height: 44px;
     }
     .mail__subject {
@@ -465,15 +482,16 @@ const UNDO_WINDOW_MS = 6000;
       overflow-wrap: anywhere;
     }
     .mail__meta {
-      font-size: 0.78rem;
-      color: var(--oc-text-muted, #6f7a76);
+      font-family: var(--font-meta);
+      font-size: 0.72rem;
+      color: var(--oc-text-muted);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .mail__snippet {
       font-size: 0.85rem;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -504,14 +522,15 @@ const UNDO_WINDOW_MS = 6000;
       height: 44px;
       border: none;
       background: none;
-      border-radius: 999px;
+      border-radius: var(--oc-r);
       font-size: 17px;
       line-height: 1;
       cursor: pointer;
-      color: var(--oc-text-muted, #6f7a76);
+      color: var(--oc-text-muted);
     }
     .mail__action:active {
-      background: var(--oc-active, #bfe3d3);
+      background: var(--oc-accent-soft);
+      color: var(--oc-accent-ink);
     }
 
     .snackbar {
@@ -523,16 +542,18 @@ const UNDO_WINDOW_MS = 6000;
       align-items: center;
       justify-content: space-between;
       gap: 0.8rem;
-      padding: 0.7rem 1rem;
-      border-radius: 14px;
-      background: var(--oc-text, #23262b);
-      color: #fff;
+      padding: 0.6rem 0.8rem;
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-border);
+      background: var(--oc-surface-2);
+      color: var(--oc-text);
+      box-shadow: var(--oc-shadow);
     }
     .snackbar__action {
       border: none;
       background: none;
-      color: var(--oc-mint, #bfe3d3);
-      font-weight: 700;
+      color: var(--oc-accent-ink);
+      font-weight: 600;
       font-size: 15px;
       cursor: pointer;
       min-height: 44px;
