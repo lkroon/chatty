@@ -1,7 +1,8 @@
-import type { BriefingEvent } from '@contracts/briefing';
+import { AGENDA_DAY_COUNT, type BriefingEvent } from '@contracts/briefing';
 
 const CALENDAR_EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
-const MAX_EVENTS = 20;
+/** Three days of a busy calendar, with room to spare. */
+const MAX_EVENTS = 60;
 
 interface GoogleEvent {
   id?: string;
@@ -48,20 +49,27 @@ export function zoneOffset(isoDate: string, timeZone: string): string {
   return offsetAtInstant(localMidnight, timeZone);
 }
 
-function nextDay(isoDate: string): string {
+export function addDays(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + 1);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
-/** Today's events on the primary calendar, in start order. */
-export async function fetchTodaysEvents(
+/**
+ * The next `AGENDA_DAY_COUNT` days of events on the primary calendar, in
+ * start order, each tagged with the local day it belongs under.
+ *
+ * The window runs from local midnight today to local midnight on the day
+ * after the last agenda day, so both edges are computed at their own offset
+ * — a window that crosses a DST change is still exactly three local days.
+ */
+export async function fetchAgendaEvents(
   accessToken: string,
   isoDate: string,
   timeZone: string,
 ): Promise<BriefingEvent[]> {
   const startOffset = zoneOffset(isoDate, timeZone);
-  const endDate = nextDay(isoDate);
+  const endDate = addDays(isoDate, AGENDA_DAY_COUNT);
   const endOffset = zoneOffset(endDate, timeZone);
   const params = new URLSearchParams({
     timeMin: `${isoDate}T00:00:00${startOffset}`,
@@ -88,9 +96,17 @@ export async function fetchTodaysEvents(
     .filter((item) => item.status !== 'cancelled')
     .map((item) => {
       const allDay = !item.start?.dateTime;
+      // `timeZone` is sent with the request, so a dateTime comes back at our
+      // own offset and its first ten characters are the local day. An all-day
+      // event carries a bare date instead.
+      const rawDate = (allDay ? item.start?.date : item.start?.dateTime)?.slice(0, 10);
       return {
         id: item.id ?? '',
         title: item.summary ?? '(no title)',
+        // A multi-day event that started before the window keeps its original
+        // start date, which is not a day the agenda renders. It belongs on the
+        // first day of the window instead — clamped, never dropped.
+        date: !rawDate || rawDate < isoDate ? isoDate : rawDate,
         start: allDay ? null : (item.start?.dateTime ?? null),
         end: allDay ? null : (item.end?.dateTime ?? null),
         allDay,

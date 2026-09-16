@@ -13,10 +13,25 @@ export interface GoogleConnectionStatus {
   needsReconnect: boolean;
 }
 
+/**
+ * How many days the agenda covers, starting with today.
+ *
+ * Shared because both sides have to agree: the API asks Google for exactly
+ * this window, and the web renders a group per day in it — including a day
+ * the window covers but no event falls on.
+ */
+export const AGENDA_DAY_COUNT = 3;
+
 /** One calendar event, already narrowed to what the summary needs. */
 export interface BriefingEvent {
   id: string;
   title: string;
+  /**
+   * `YYYY-MM-DD`, the local day this event is shown under. Always one of the
+   * `AGENDA_DAY_COUNT` days from the briefing's `date`: an event that began
+   * before the window (a multi-day all-day event) is clamped to its first day.
+   */
+  date: string;
   /** RFC3339 with offset, e.g. "2026-09-05T09:00:00+02:00". Null for all-day events. */
   start: string | null;
   end: string | null;
@@ -70,8 +85,9 @@ export interface Briefing {
   timeZone: string;
   /** Markdown. Empty string when summarization failed; the sections still render. */
   summary: string;
+  /** Events across the agenda window, in start order. Group by `date`. */
   calendar: BriefingSection<BriefingEvent>;
-  /** Tasks due today or overdue, soonest first. */
+  /** Tasks due today, overdue or undated. Dated first, soonest first. */
   tasks: BriefingSection<BriefingTask>;
   mail: BriefingSection<BriefingMail>;
   /**
