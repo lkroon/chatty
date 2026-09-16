@@ -105,9 +105,14 @@ export class OpencodeClient {
     // first end-of-stream signal instead of stopping there.
     let finishReason: string | null = null;
     let costRaw: string | undefined;
-    const toolCallFragments = new Map<number, { id?: string; name?: string; args: string }>();
+    const toolCallFragments = new Map<
+      number,
+      { id?: string; name?: string; args: string }
+    >();
 
-    const handleFrame = function* (raw: string): Generator<OpencodeStreamChunk> {
+    const handleFrame = function* (
+      raw: string,
+    ): Generator<OpencodeStreamChunk> {
       const parsed = OpencodeClient.parseFrame(raw);
       if (!parsed) {
         return;
@@ -168,12 +173,21 @@ export class OpencodeClient {
       reader.releaseLock();
     }
 
-    const toolCalls = OpencodeClient.buildAccumulatedToolCalls(toolCallFragments);
-    const cost = costRaw === undefined ? null : OpencodeClient.parseCost(costRaw);
-    yield { type: 'done', finishReason: finishReason ?? 'stop', toolCalls, cost };
+    const toolCalls =
+      OpencodeClient.buildAccumulatedToolCalls(toolCallFragments);
+    const cost =
+      costRaw === undefined ? null : OpencodeClient.parseCost(costRaw);
+    yield {
+      type: 'done',
+      finishReason: finishReason ?? 'stop',
+      toolCalls,
+      cost,
+    };
   }
 
-  private static async readErrorBody(response: Response): Promise<string | undefined> {
+  private static async readErrorBody(
+    response: Response,
+  ): Promise<string | undefined> {
     try {
       const text = await response.text();
       return text.length > MAX_ERROR_BODY_CHARS
@@ -197,7 +211,11 @@ export class OpencodeClient {
     }
     return [...fragments.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([, call]) => ({ id: call.id ?? '', name: call.name ?? '', arguments: call.args }));
+      .map(([, call]) => ({
+        id: call.id ?? '',
+        name: call.name ?? '',
+        arguments: call.args,
+      }));
   }
 
   private static parseFrame(data: string): ParsedFrame | null {
@@ -240,21 +258,33 @@ export class OpencodeClient {
     const toolCalls = delta?.tool_calls;
     if (Array.isArray(toolCalls) && toolCalls.length > 0) {
       const tc = toolCalls[0] as
-        | { index?: number; id?: string; function?: { name?: string; arguments?: string } }
+        | {
+            index?: number;
+            id?: string;
+            function?: { name?: string; arguments?: string };
+          }
         | undefined;
       if (tc && typeof tc.index === 'number') {
         result.toolCallFragment = {
           index: tc.index,
           id: typeof tc.id === 'string' ? tc.id : undefined,
-          name: typeof tc.function?.name === 'string' ? tc.function.name : undefined,
+          name:
+            typeof tc.function?.name === 'string'
+              ? tc.function.name
+              : undefined,
           argumentsFragment:
-            typeof tc.function?.arguments === 'string' ? tc.function.arguments : undefined,
+            typeof tc.function?.arguments === 'string'
+              ? tc.function.arguments
+              : undefined,
         };
       }
       return result;
     }
 
-    if (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+    if (
+      typeof delta?.reasoning_content === 'string' &&
+      delta.reasoning_content.length > 0
+    ) {
       result.reasoning = true;
       return result;
     }

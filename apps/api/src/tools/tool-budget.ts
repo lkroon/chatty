@@ -70,7 +70,10 @@ export class ToolBudget {
     if (this.charsRemaining <= 0) {
       return '';
     }
-    const usable = text.length <= this.charsRemaining ? text : text.slice(0, this.charsRemaining);
+    const usable =
+      text.length <= this.charsRemaining
+        ? text
+        : text.slice(0, this.charsRemaining);
     this.charsRemaining -= usable.length;
     return usable;
   }

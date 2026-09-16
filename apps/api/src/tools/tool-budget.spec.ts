@@ -1,4 +1,8 @@
-import { MAX_FETCHES_PER_EXCHANGE, TOOL_TOTAL_MAX_CHARS, ToolBudget } from './tool-budget';
+import {
+  MAX_FETCHES_PER_EXCHANGE,
+  TOOL_TOTAL_MAX_CHARS,
+  ToolBudget,
+} from './tool-budget';
 
 describe('ToolBudget', () => {
   it('claimChars returns the text unchanged and decrements when under budget', () => {

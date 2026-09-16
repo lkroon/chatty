@@ -1,11 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { TOOL_DEFINITIONS } from './tool-definitions';
 import { ToolBudget } from './tool-budget';
-import { ToolActor, ToolDefinition, ToolExecutionResult, ToolRuntime } from './tool-runtime';
+import {
+  ToolActor,
+  ToolDefinition,
+  ToolExecutionResult,
+  ToolRuntime,
+} from './tool-runtime';
 import { SearchProvider, formatSearchResults } from './search-provider';
 import { fetchPage } from './web-fetch';
 import { writeToolsEnabled } from '../google/google-oauth';
-import { PROPOSAL_TOOL_DEFINITIONS, PROPOSAL_TOOL_LABELS } from './proposal-tool-definitions';
+import {
+  PROPOSAL_TOOL_DEFINITIONS,
+  PROPOSAL_TOOL_LABELS,
+} from './proposal-tool-definitions';
 import type { ProposalToolPort } from './proposal-tool-port';
 
 const logger = new Logger('ToolRuntime');
@@ -14,7 +22,9 @@ const logger = new Logger('ToolRuntime');
 function parseArguments(rawArguments: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(rawArguments);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -103,13 +113,19 @@ export class ToolRuntimeImpl implements ToolRuntime {
         // Framing is applied after the budget claim, so it can never be the
         // part that gets truncated away, and never consumes budget itself.
         // A proposal result is our own text, not a stranger's, and is exempt.
-        return { ...result, content: frameUntrusted(budget.claimChars(result.content)) };
+        return {
+          ...result,
+          content: frameUntrusted(budget.claimChars(result.content)),
+        };
       }
       return result;
     } catch (err) {
       // execute() never throws — a bug here is logged and converted rather
       // than failing the whole exchange.
-      logger.error(`Unexpected error executing tool ${call.name}`, err as Error);
+      logger.error(
+        `Unexpected error executing tool ${call.name}`,
+        err as Error,
+      );
       return {
         status: 'failed',
         content: `Tool ${call.name} failed unexpectedly. Answer with what you already have.`,
@@ -196,7 +212,10 @@ export class ToolRuntimeImpl implements ToolRuntime {
     };
   }
 
-  private async search(query: string, signal: AbortSignal): Promise<ToolExecutionResult> {
+  private async search(
+    query: string,
+    signal: AbortSignal,
+  ): Promise<ToolExecutionResult> {
     try {
       const results = await this.searchProvider.search(query, signal);
       return {

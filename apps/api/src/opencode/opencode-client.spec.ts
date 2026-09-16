@@ -77,7 +77,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hel' },
         { type: 'delta', text: 'lo' },
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: null,
+        },
       ]);
     } finally {
       // Release any gate the client never reached, so the handler can finish
@@ -110,7 +115,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       }
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hello world' },
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: null,
+        },
       ]);
     } finally {
       await fake.close();
@@ -226,7 +236,11 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       const tools = [
         {
           type: 'function' as const,
-          function: { name: 'web_search' as const, description: 'd', parameters: {} },
+          function: {
+            name: 'web_search' as const,
+            description: 'd',
+            parameters: {},
+          },
         },
       ];
       for await (const chunk of client.streamChatCompletion({
@@ -255,12 +269,79 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
     const fake = await startFakeUpstream(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       const frames = [
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '{"que' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ry": ' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '"Hac' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ker"' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '}' } }] } } ] },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call-1',
+                    type: 'function',
+                    function: { name: 'web_search', arguments: '' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '{"que' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: 'ry": ' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '"Hac' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: 'ker"' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '}' } }],
+              },
+            },
+          ],
+        },
         { choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }] },
       ];
       for (const frame of frames) {
@@ -284,7 +365,13 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         {
           type: 'done',
           finishReason: 'tool_calls',
-          toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query": "Hacker"}' }],
+          toolCalls: [
+            {
+              id: 'call-1',
+              name: 'web_search',
+              arguments: '{"query": "Hacker"}',
+            },
+          ],
           cost: null,
         },
       ]);
@@ -296,8 +383,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
   it('a stream emitting finish_reason then [DONE] yields exactly one done chunk', async () => {
     const fake = await startFakeUpstream((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      );
       res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
@@ -313,7 +404,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       })) {
         chunks.push(chunk);
       }
-      const doneChunks = chunks.filter((c) => (c as { type: string }).type === 'done');
+      const doneChunks = chunks.filter(
+        (c) => (c as { type: string }).type === 'done',
+      );
       expect(doneChunks).toHaveLength(1);
       expect(doneChunks[0]).toEqual({
         type: 'done',
@@ -329,7 +422,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
   it('captures a trailing cost frame that arrives after [DONE]', async () => {
     const fake = await startFakeUpstream((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      );
       res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.write(`data: ${JSON.stringify({ choices: [], cost: '0.0042' })}\n\n`);
@@ -347,7 +442,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         chunks.push(chunk);
       }
       expect(chunks).toEqual([
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: 0.0042 },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: 0.0042,
+        },
       ]);
     } finally {
       await fake.close();
@@ -409,10 +509,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(OpencodeUpstreamError);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).status).toBe(400);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).body).toContain(
-        'MissingSessionID',
-      );
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).status,
+      ).toBe(400);
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).body,
+      ).toContain('MissingSessionID');
     } finally {
       await fake.close();
     }
