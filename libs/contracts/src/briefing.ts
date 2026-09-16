@@ -27,16 +27,17 @@ export interface BriefingEvent {
 /**
  * One task from the account's default Google Tasks list.
  *
- * Only tasks that are due today or overdue reach Today — a task with no due
- * date is parked, not pending, and an undated backlog would swamp the
- * calendar and mail it sits next to.
+ * Tasks due today, overdue, or undated reach Today. A future-dated task does
+ * not: it belongs to the day it is due. Undated tasks are included because
+ * most tasks added from chat never get a due date, and a task the user cannot
+ * see on Today is a task they will not do.
  */
 export interface BriefingTask {
   id: string;
   title: string;
-  /** `YYYY-MM-DD`. Never null: an undated task is filtered out by the source. */
-  due: string;
-  /** True when `due` is earlier than the briefing's `date`. */
+  /** `YYYY-MM-DD`, or null for a task with no due date. */
+  due: string | null;
+  /** True when `due` is set and earlier than the briefing's `date`. */
   overdue: boolean;
   notes: string | null;
 }

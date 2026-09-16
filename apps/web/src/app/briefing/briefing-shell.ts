@@ -169,6 +169,8 @@ const UNDO_WINDOW_MS = 6000;
                         <span class="task__title">{{ task.title }}</span>
                         @if (task.overdue) {
                           <span class="task__due">Overdue · {{ task.due }}</span>
+                        } @else if (!task.due) {
+                          <span class="task__due">No due date</span>
                         }
                       </span>
                       <button
@@ -182,7 +184,7 @@ const UNDO_WINDOW_MS = 6000;
                       </button>
                     </div>
                   } @empty {
-                    <p class="hint">Nothing due today.</p>
+                    <p class="hint">No tasks waiting.</p>
                   }
                 }
                 @case ('error') {

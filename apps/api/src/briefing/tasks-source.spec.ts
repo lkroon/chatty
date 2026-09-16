@@ -29,7 +29,7 @@ describe('fetchDueTasks', () => {
     );
   });
 
-  it('keeps due-today and overdue tasks, drops undated and future ones', async () => {
+  it('keeps due-today, overdue and undated tasks, drops future ones', async () => {
     respondWith({
       items: [
         {
@@ -61,7 +61,8 @@ describe('fetchDueTasks', () => {
     });
 
     const tasks = await fetchDueTasks('at', '2026-09-08');
-    expect(tasks.map((t) => t.id)).toEqual(['t2', 't1']);
+    // Undated last: it has no place on the day.
+    expect(tasks.map((t) => t.id)).toEqual(['t2', 't1', 't3']);
     expect(tasks[0]).toEqual({
       id: 't2',
       title: 'Late',
@@ -70,6 +71,13 @@ describe('fetchDueTasks', () => {
       notes: null,
     });
     expect(tasks[1].overdue).toBe(false);
+    expect(tasks[2]).toEqual({
+      id: 't3',
+      title: 'Someday',
+      due: null,
+      overdue: false,
+      notes: null,
+    });
   });
 
   it('throws on a non-ok response', async () => {
