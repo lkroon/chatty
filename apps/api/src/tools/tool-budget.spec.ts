@@ -1,4 +1,9 @@
-import { MAX_FETCHES_PER_EXCHANGE, TOOL_TOTAL_MAX_CHARS, ToolBudget } from './tool-budget';
+import {
+  MAX_FETCHES_PER_EXCHANGE,
+  MAX_TOOL_FAILURES_PER_EXCHANGE,
+  TOOL_TOTAL_MAX_CHARS,
+  ToolBudget,
+} from './tool-budget';
 
 describe('ToolBudget', () => {
   it('claimChars returns the text unchanged and decrements when under budget', () => {
@@ -34,5 +39,28 @@ describe('ToolBudget', () => {
       false,
     ]);
     expect(budget.fetchesRemaining).toBe(0);
+  });
+
+  it('recordFailure reports false on the last allowed failure and stays exhausted after', () => {
+    const budget = new ToolBudget();
+    const results: boolean[] = [];
+    for (let i = 0; i < MAX_TOOL_FAILURES_PER_EXCHANGE + 1; i++) {
+      results.push(budget.recordFailure());
+    }
+    expect(results).toEqual([
+      ...Array(MAX_TOOL_FAILURES_PER_EXCHANGE - 1).fill(true),
+      false,
+      false,
+    ]);
+    expect(budget.failuresRemaining).toBe(0);
+  });
+
+  it('failuresExhausted is false until the allowance is spent', () => {
+    const budget = new ToolBudget();
+    expect(budget.failuresExhausted).toBe(false);
+    for (let i = 0; i < MAX_TOOL_FAILURES_PER_EXCHANGE; i++) {
+      budget.recordFailure();
+    }
+    expect(budget.failuresExhausted).toBe(true);
   });
 });

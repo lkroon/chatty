@@ -1,11 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { TOOL_DEFINITIONS } from './tool-definitions';
 import { ToolBudget } from './tool-budget';
-import { ToolActor, ToolDefinition, ToolExecutionResult, ToolRuntime } from './tool-runtime';
+import {
+  ToolActor,
+  ToolDefinition,
+  ToolExecutionResult,
+  ToolRuntime,
+} from './tool-runtime';
 import { SearchProvider, formatSearchResults } from './search-provider';
 import { fetchPage } from './web-fetch';
 import { writeToolsEnabled } from '../google/google-oauth';
-import { PROPOSAL_TOOL_DEFINITIONS, PROPOSAL_TOOL_LABELS } from './proposal-tool-definitions';
+import {
+  PROPOSAL_TOOL_DEFINITIONS,
+  PROPOSAL_TOOL_LABELS,
+} from './proposal-tool-definitions';
 import type { ProposalToolPort } from './proposal-tool-port';
 
 const logger = new Logger('ToolRuntime');
@@ -14,7 +22,9 @@ const logger = new Logger('ToolRuntime');
 function parseArguments(rawArguments: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(rawArguments);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -63,6 +73,15 @@ function frameUntrusted(content: string): string {
   ].join('\n');
 }
 
+/**
+ * Appended to the last failure an exchange is allowed. The chat loop stops
+ * sending `tools` from here on, so this is not a request the model may
+ * decline — it is notice of what has already been taken away.
+ */
+const TOOLS_WITHDRAWN =
+  'Too many tool calls have failed in this exchange, so no more will be offered. ' +
+  'Answer now with what you already have, and say plainly which part you could not verify.';
+
 /** What the model is told after a proposal is stored. It has NOT happened yet. */
 function proposedNotice(title: string): string {
   return [
@@ -99,17 +118,34 @@ export class ToolRuntimeImpl implements ToolRuntime {
   ): Promise<ToolExecutionResult> {
     try {
       const result = await this.dispatch(call, budget, signal, actor);
+      if (result.status === 'failed') {
+        // Counted here rather than at each failure site so that every path
+        // — bad arguments, blocked URL, provider down, unknown tool — is
+        // charged exactly once, including the ones added later.
+        if (!budget.recordFailure()) {
+          return {
+            ...result,
+            content: `${result.content}\n\n${TOOLS_WITHDRAWN}`,
+          };
+        }
+      }
       if (result.status === 'done' && !result.proposal) {
         // Framing is applied after the budget claim, so it can never be the
         // part that gets truncated away, and never consumes budget itself.
         // A proposal result is our own text, not a stranger's, and is exempt.
-        return { ...result, content: frameUntrusted(budget.claimChars(result.content)) };
+        return {
+          ...result,
+          content: frameUntrusted(budget.claimChars(result.content)),
+        };
       }
       return result;
     } catch (err) {
       // execute() never throws — a bug here is logged and converted rather
       // than failing the whole exchange.
-      logger.error(`Unexpected error executing tool ${call.name}`, err as Error);
+      logger.error(
+        `Unexpected error executing tool ${call.name}`,
+        err as Error,
+      );
       return {
         status: 'failed',
         content: `Tool ${call.name} failed unexpectedly. Answer with what you already have.`,
@@ -137,6 +173,11 @@ export class ToolRuntimeImpl implements ToolRuntime {
       const args = parseArguments(call.rawArguments);
       const url = typeof args?.url === 'string' ? args.url : null;
       if (!url) {
+        // Charged against the fetch budget even though nothing was fetched.
+        // A malformed call that costs nothing is one the model can repeat
+        // for free, which is exactly how a single bad argument turned into
+        // four identical "Couldn't run web_fetch" chips in a row.
+        budget.claimFetch();
         return invalidArguments(call.name);
       }
       return fetchPage(url, budget, signal);
@@ -196,7 +237,10 @@ export class ToolRuntimeImpl implements ToolRuntime {
     };
   }
 
-  private async search(query: string, signal: AbortSignal): Promise<ToolExecutionResult> {
+  private async search(
+    query: string,
+    signal: AbortSignal,
+  ): Promise<ToolExecutionResult> {
     try {
       const results = await this.searchProvider.search(query, signal);
       return {

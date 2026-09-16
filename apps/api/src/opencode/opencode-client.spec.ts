@@ -77,7 +77,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hel' },
         { type: 'delta', text: 'lo' },
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: null,
+        },
       ]);
     } finally {
       // Release any gate the client never reached, so the handler can finish
@@ -110,7 +115,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       }
       expect(chunks).toEqual([
         { type: 'delta', text: 'Hello world' },
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: null },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: null,
+        },
       ]);
     } finally {
       await fake.close();
@@ -226,7 +236,11 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       const tools = [
         {
           type: 'function' as const,
-          function: { name: 'web_search' as const, description: 'd', parameters: {} },
+          function: {
+            name: 'web_search' as const,
+            description: 'd',
+            parameters: {},
+          },
         },
       ];
       for await (const chunk of client.streamChatCompletion({
@@ -255,12 +269,79 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
     const fake = await startFakeUpstream(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       const frames = [
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '{"que' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ry": ' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '"Hac' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: 'ker"' } }] } } ] },
-        { choices: [{ index: 0, finish_reason: null, delta: { tool_calls: [{ index: 0, function: { arguments: '}' } }] } } ] },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call-1',
+                    type: 'function',
+                    function: { name: 'web_search', arguments: '' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '{"que' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: 'ry": ' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '"Hac' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: 'ker"' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '}' } }],
+              },
+            },
+          ],
+        },
         { choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }] },
       ];
       for (const frame of frames) {
@@ -284,7 +365,13 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         {
           type: 'done',
           finishReason: 'tool_calls',
-          toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query": "Hacker"}' }],
+          toolCalls: [
+            {
+              id: 'call-1',
+              name: 'web_search',
+              arguments: '{"query": "Hacker"}',
+            },
+          ],
           cost: null,
         },
       ]);
@@ -293,11 +380,263 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
     }
   });
 
+  /**
+   * The upstream's tool-call framing is not one shape. Each case below was
+   * observed to silently lose calls before 2026-09-16, and every one of
+   * them reached the user as a tool that "failed repeatedly": a call whose
+   * arguments never arrived fails JSON.parse and surfaces as
+   * "Couldn't run web_fetch", and a call that vanished entirely leaves the
+   * model with nothing and no explanation.
+   */
+  describe('tool-call reassembly across the framings the upstream actually uses', () => {
+    /** Streams `frames`, then `[DONE]`, and returns the single done chunk. */
+    async function collectDone(frames: unknown[]): Promise<{
+      finishReason: string;
+      toolCalls?: { id: string; name: string; arguments: string }[];
+    }> {
+      const fake = await startFakeUpstream((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        for (const frame of frames) {
+          res.write(`data: ${JSON.stringify(frame)}\n\n`);
+        }
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+      try {
+        const client = new OpencodeClient(fake.baseUrl, 'k');
+        const chunks: unknown[] = [];
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'go' }],
+          sessionId: 'session-1',
+        })) {
+          chunks.push(chunk);
+        }
+        return chunks[chunks.length - 1] as never;
+      } finally {
+        await fake.close();
+      }
+    }
+
+    function call(index: number, id: string, url: string) {
+      return {
+        index,
+        id,
+        type: 'function',
+        function: { name: 'web_fetch', arguments: JSON.stringify({ url }) },
+      };
+    }
+
+    it('keeps every call when one frame batches several parallel calls', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  call(0, 'c1', 'https://a.example'),
+                  call(1, 'c2', 'https://b.example'),
+                  call(2, 'c3', 'https://c.example'),
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+        {
+          id: 'c2',
+          name: 'web_fetch',
+          arguments: '{"url":"https://b.example"}',
+        },
+        {
+          id: 'c3',
+          name: 'web_fetch',
+          arguments: '{"url":"https://c.example"}',
+        },
+      ]);
+    });
+
+    it('keeps calls delivered in the same frame as finish_reason', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: { tool_calls: [call(0, 'c1', 'https://a.example')] },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        },
+      ]);
+      expect(done.finishReason).toBe('tool_calls');
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+      ]);
+    });
+
+    it('re-serializes function.arguments handed back as an object rather than a JSON string', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c1',
+                    function: {
+                      name: 'web_fetch',
+                      arguments: { url: 'https://a.example' },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+      ]);
+      // The point of the case: these arguments must survive a JSON.parse,
+      // which is what the tool runtime does with them.
+      expect(JSON.parse(done.toolCalls![0].arguments)).toEqual({
+        url: 'https://a.example',
+      });
+    });
+
+    it('does not duplicate arguments when an upstream repeats entries cumulatively', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            { delta: { tool_calls: [call(0, 'c1', 'https://a.example')] } },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c1',
+                    function: { name: 'web_fetch', arguments: '' },
+                  },
+                  call(1, 'c2', 'https://b.example'),
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      expect(done.toolCalls).toEqual([
+        {
+          id: 'c1',
+          name: 'web_fetch',
+          arguments: '{"url":"https://a.example"}',
+        },
+        {
+          id: 'c2',
+          name: 'web_fetch',
+          arguments: '{"url":"https://b.example"}',
+        },
+      ]);
+    });
+
+    it('gives every call a distinct id when the upstream omits them', async () => {
+      const done = await collectDone([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: {
+                      name: 'web_fetch',
+                      arguments: '{"url":"https://a.example"}',
+                    },
+                  },
+                  {
+                    index: 1,
+                    function: {
+                      name: 'web_fetch',
+                      arguments: '{"url":"https://b.example"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+      const ids = done.toolCalls!.map((c) => c.id);
+      expect(ids.every((id) => id.length > 0)).toBe(true);
+      expect(new Set(ids).size).toBe(2);
+    });
+
+    it('still yields text deltas from a frame that also carries tool calls', async () => {
+      const fake = await startFakeUpstream((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(
+          `data: ${JSON.stringify({ choices: [{ delta: { content: 'Looking…' } }] })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: { tool_calls: [call(0, 'c1', 'https://a.example')] },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          })}\n\n`,
+        );
+        res.end();
+      });
+      try {
+        const client = new OpencodeClient(fake.baseUrl, 'k');
+        const chunks: unknown[] = [];
+        for await (const chunk of client.streamChatCompletion({
+          model: 'glm-5.3',
+          messages: [{ role: 'user', content: 'go' }],
+          sessionId: 'session-1',
+        })) {
+          chunks.push(chunk);
+        }
+        expect(chunks[0]).toEqual({ type: 'delta', text: 'Looking…' });
+        expect(chunks).toHaveLength(2);
+      } finally {
+        await fake.close();
+      }
+    });
+  });
+
   it('a stream emitting finish_reason then [DONE] yields exactly one done chunk', async () => {
     const fake = await startFakeUpstream((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      );
       res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
@@ -313,7 +652,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
       })) {
         chunks.push(chunk);
       }
-      const doneChunks = chunks.filter((c) => (c as { type: string }).type === 'done');
+      const doneChunks = chunks.filter(
+        (c) => (c as { type: string }).type === 'done',
+      );
       expect(doneChunks).toHaveLength(1);
       expect(doneChunks[0]).toEqual({
         type: 'done',
@@ -329,7 +670,9 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
   it('captures a trailing cost frame that arrives after [DONE]', async () => {
     const fake = await startFakeUpstream((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      );
       res.write(`data: ${JSON.stringify({ choices: [] })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.write(`data: ${JSON.stringify({ choices: [], cost: '0.0042' })}\n\n`);
@@ -347,7 +690,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         chunks.push(chunk);
       }
       expect(chunks).toEqual([
-        { type: 'done', finishReason: 'stop', toolCalls: undefined, cost: 0.0042 },
+        {
+          type: 'done',
+          finishReason: 'stop',
+          toolCalls: undefined,
+          cost: 0.0042,
+        },
       ]);
     } finally {
       await fake.close();
@@ -409,10 +757,12 @@ describe('OpencodeClient (against a real fake-upstream HTTP server)', () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(OpencodeUpstreamError);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).status).toBe(400);
-      expect((caught as InstanceType<typeof OpencodeUpstreamError>).body).toContain(
-        'MissingSessionID',
-      );
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).status,
+      ).toBe(400);
+      expect(
+        (caught as InstanceType<typeof OpencodeUpstreamError>).body,
+      ).toContain('MissingSessionID');
     } finally {
       await fake.close();
     }

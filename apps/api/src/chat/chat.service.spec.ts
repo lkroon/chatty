@@ -7,7 +7,10 @@ import {
   OpencodeStreamChunk,
 } from '../opencode/opencode-client.types';
 import type { OpencodeService } from '../opencode/opencode.service';
-import { MAX_TOOL_ROUNDS } from '../tools/tool-budget';
+import {
+  MAX_TOOL_FAILURES_PER_EXCHANGE,
+  MAX_TOOL_ROUNDS,
+} from '../tools/tool-budget';
 import type {
   ToolActor,
   ToolDefinition,
@@ -21,7 +24,8 @@ import { TOOL_DEFINITIONS } from '../tools/tool-definitions';
 class FakeConversationStore implements ConversationStore {
   startExchangeCalls: unknown[] = [];
   finalizeCalls: unknown[] = [];
-  saveToolCallsCalls: { assistantMessageId: string; chips: ToolCallChip[] }[] = [];
+  saveToolCallsCalls: { assistantMessageId: string; chips: ToolCallChip[] }[] =
+    [];
   nextResult = { conversationId: 'conv-1', assistantMessageId: 'msg-1' };
   history = [{ role: 'user' as const, content: 'previous turn' }];
 
@@ -44,7 +48,10 @@ class FakeConversationStore implements ConversationStore {
     this.finalizeCalls.push(input);
   }
 
-  async saveToolCalls(input: { assistantMessageId: string; chips: ToolCallChip[] }) {
+  async saveToolCalls(input: {
+    assistantMessageId: string;
+    chips: ToolCallChip[];
+  }) {
     this.saveToolCallsCalls.push(input);
   }
 
@@ -66,7 +73,9 @@ class FakeUsageService {
 }
 
 function fakeOpencodeService(
-  generatorFn: (params: OpencodeChatCompletionParams) => AsyncGenerator<OpencodeStreamChunk>,
+  generatorFn: (
+    params: OpencodeChatCompletionParams,
+  ) => AsyncGenerator<OpencodeStreamChunk>,
 ): OpencodeService {
   return {
     streamChatCompletion: generatorFn,
@@ -79,7 +88,9 @@ class NoopToolRuntime implements ToolRuntime {
     return TOOL_DEFINITIONS;
   }
   async execute(): Promise<ToolExecutionResult> {
-    throw new Error('NoopToolRuntime.execute should never be called with tools disabled');
+    throw new Error(
+      'NoopToolRuntime.execute should never be called with tools disabled',
+    );
   }
 }
 
@@ -95,14 +106,21 @@ class FakeToolRuntime implements ToolRuntime {
 
   async execute(
     call: { name: string; rawArguments: string },
-    _budget: ToolBudget,
+    budget: ToolBudget,
     _signal: AbortSignal,
     actor: ToolActor,
   ): Promise<ToolExecutionResult> {
     this.executeCalls.push(call);
     this.actors.push(actor);
+    const canned = this.results.shift();
+    // Mirrors the real runtime: a failed call is charged against the
+    // exchange's failure allowance, which is what eventually withdraws
+    // tools from the loop.
+    if (canned?.status === 'failed') {
+      budget.recordFailure();
+    }
     return (
-      this.results.shift() ?? {
+      canned ?? {
         status: 'done',
         content: 'no more canned results',
         label: 'done',
@@ -114,8 +132,17 @@ class FakeToolRuntime implements ToolRuntime {
 
 const body: ChatRequest = { model: 'glm-5.3', content: 'hello there' };
 
-function doneChunk(finishReason: string, extra: Partial<Extract<OpencodeStreamChunk, { type: 'done' }>> = {}) {
-  return { type: 'done' as const, finishReason, toolCalls: undefined, cost: null, ...extra };
+function doneChunk(
+  finishReason: string,
+  extra: Partial<Extract<OpencodeStreamChunk, { type: 'done' }>> = {},
+) {
+  return {
+    type: 'done' as const,
+    finishReason,
+    toolCalls: undefined,
+    cost: null,
+    ...extra,
+  };
 }
 
 describe('ChatService', () => {
@@ -127,7 +154,8 @@ describe('ChatService', () => {
   it('calls usage.consume() before touching the conversation store or opencode', async () => {
     const order: string[] = [];
     const conversationStore = new FakeConversationStore();
-    const originalStart = conversationStore.startExchange.bind(conversationStore);
+    const originalStart =
+      conversationStore.startExchange.bind(conversationStore);
     conversationStore.startExchange = async (input) => {
       order.push('startExchange');
       return originalStart(input);
@@ -151,9 +179,18 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
-    expect(order).toEqual(['usage.consume', 'startExchange', 'opencode.stream']);
+    expect(order).toEqual([
+      'usage.consume',
+      'startExchange',
+      'opencode.stream',
+    ]);
   });
 
   it('emits UPSTREAM error and does not call usage/store when accountId is missing', async () => {
@@ -169,7 +206,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run(undefined, body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      undefined,
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     expect(events).toEqual([
       { type: 'error', code: 'UPSTREAM', message: 'Not authenticated' },
@@ -192,7 +234,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     expect(events).toEqual([
       {
@@ -204,7 +251,7 @@ describe('ChatService', () => {
     expect(conversationStore.startExchangeCalls).toEqual([]);
   });
 
-  it('emits meta first (using startExchange\'s ids), then deltas, then done, and finalizes with the full accumulated text', async () => {
+  it("emits meta first (using startExchange's ids), then deltas, then done, and finalizes with the full accumulated text", async () => {
     const conversationStore = new FakeConversationStore();
     conversationStore.nextResult = {
       conversationId: 'conv-42',
@@ -223,7 +270,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     expect(events).toEqual([
       { type: 'meta', conversationId: 'conv-42', messageId: 'msg-42' },
@@ -232,7 +284,12 @@ describe('ChatService', () => {
       { type: 'done', finishReason: 'stop' },
     ]);
     expect(conversationStore.finalizeCalls).toEqual([
-      { assistantMessageId: 'msg-42', content: 'Hello', aborted: false, cost: null },
+      {
+        assistantMessageId: 'msg-42',
+        content: 'Hello',
+        aborted: false,
+        cost: null,
+      },
     ]);
     // Called once even with no tool calls made (empty array, no-op per the interface doc).
     expect(conversationStore.saveToolCallsCalls).toEqual([
@@ -265,7 +322,9 @@ describe('ChatService', () => {
       { role: 'system', content: expect.stringContaining('helpful assistant') },
       { role: 'user', content: 'previous turn' },
     ]);
-    expect((upstreamParams?.messages[0].content ?? '')).not.toContain('search the web');
+    expect(upstreamParams?.messages[0].content ?? '').not.toContain(
+      'search the web',
+    );
   });
 
   it('maps a 429 OpencodeUpstreamError to a RATE_LIMIT ChatEvent and finalizes with whatever streamed so far', async () => {
@@ -282,7 +341,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     expect(events).toEqual([
       { type: 'meta', conversationId: 'conv-1', messageId: 'msg-1' },
@@ -290,7 +354,12 @@ describe('ChatService', () => {
       { type: 'error', code: 'RATE_LIMIT', message: 'Upstream rate limited' },
     ]);
     expect(conversationStore.finalizeCalls).toEqual([
-      { assistantMessageId: 'msg-1', content: 'partial', aborted: false, cost: null },
+      {
+        assistantMessageId: 'msg-1',
+        content: 'partial',
+        aborted: false,
+        cost: null,
+      },
     ]);
   });
 
@@ -310,7 +379,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     expect(events).toEqual([
       { type: 'meta', conversationId: 'conv-1', messageId: 'msg-1' },
@@ -334,7 +408,12 @@ describe('ChatService', () => {
       new NoopToolRuntime(),
     );
     const events: ChatEvent[] = [];
-    await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+    await service.run(
+      'acct-1',
+      body,
+      (e) => events.push(e),
+      new AbortController().signal,
+    );
 
     const errorEvent = events[events.length - 1] as Extract<
       ChatEvent,
@@ -379,7 +458,12 @@ describe('ChatService', () => {
       { type: 'delta', text: 'Hel' },
     ]);
     expect(conversationStore.finalizeCalls).toEqual([
-      { assistantMessageId: 'msg-1', content: 'Hel', aborted: true, cost: null },
+      {
+        assistantMessageId: 'msg-1',
+        content: 'Hel',
+        aborted: true,
+        cost: null,
+      },
     ]);
   });
 
@@ -414,7 +498,12 @@ describe('ChatService', () => {
       { type: 'delta', text: 'Hel' },
     ]);
     expect(conversationStore.finalizeCalls).toEqual([
-      { assistantMessageId: 'msg-1', content: 'Hel', aborted: true, cost: null },
+      {
+        assistantMessageId: 'msg-1',
+        content: 'Hel',
+        aborted: true,
+        cost: null,
+      },
     ]);
   });
 
@@ -433,19 +522,29 @@ describe('ChatService', () => {
           status: 'done',
           content: '1. Hacker News\nhttps://news.ycombinator.com\ntop stories',
           label: 'Searched "hacker news"',
-          sources: [{ title: 'Hacker News', url: 'https://news.ycombinator.com' }],
+          sources: [
+            { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+          ],
         },
       ];
 
       let calls = 0;
       let seenToolsOnFirstCall: unknown;
       let seenToolsOnSecondCall: unknown;
-      async function* stream(params: OpencodeChatCompletionParams): AsyncGenerator<OpencodeStreamChunk> {
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
         calls += 1;
         if (calls === 1) {
           seenToolsOnFirstCall = params.tools;
           yield doneChunk('tool_calls', {
-            toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query":"hacker news"}' }],
+            toolCalls: [
+              {
+                id: 'call-1',
+                name: 'web_search',
+                arguments: '{"query":"hacker news"}',
+              },
+            ],
           });
         } else {
           seenToolsOnSecondCall = params.tools;
@@ -462,15 +561,30 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
 
       expect(calls).toBe(2);
       expect(seenToolsOnFirstCall).toBeDefined();
       expect(seenToolsOnSecondCall).toBeDefined(); // round 2 of 3 allowed rounds still offers tools
-      expect(events[0]).toEqual({ type: 'meta', conversationId: 'conv-1', messageId: 'msg-1' });
+      expect(events[0]).toEqual({
+        type: 'meta',
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+      });
       expect(events[1]).toEqual({
         type: 'tool',
-        chip: { callId: 'call-1', name: 'web_search', status: 'running', label: 'Searching…', sources: [] },
+        chip: {
+          callId: 'call-1',
+          name: 'web_search',
+          status: 'running',
+          label: 'Searching…',
+          sources: [],
+        },
       });
       expect(events[2]).toEqual({
         type: 'tool',
@@ -479,7 +593,9 @@ describe('ChatService', () => {
           name: 'web_search',
           status: 'done',
           label: 'Searched "hacker news"',
-          sources: [{ title: 'Hacker News', url: 'https://news.ycombinator.com' }],
+          sources: [
+            { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+          ],
         },
       });
       expect(events[3]).toEqual({ type: 'delta', text: 'The top story is ' });
@@ -507,7 +623,9 @@ describe('ChatService', () => {
               name: 'web_search',
               status: 'done',
               label: 'Searched "hacker news"',
-              sources: [{ title: 'Hacker News', url: 'https://news.ycombinator.com' }],
+              sources: [
+                { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+              ],
             },
           ],
         },
@@ -527,11 +645,19 @@ describe('ChatService', () => {
 
       let calls = 0;
       const toolsSeenPerCall: unknown[] = [];
-      async function* stream(params: OpencodeChatCompletionParams): AsyncGenerator<OpencodeStreamChunk> {
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
         calls += 1;
         toolsSeenPerCall.push(params.tools);
         yield doneChunk('tool_calls', {
-          toolCalls: [{ id: `call-${calls}`, name: 'web_search', arguments: `{"query":"q${calls}"}` }],
+          toolCalls: [
+            {
+              id: `call-${calls}`,
+              name: 'web_search',
+              arguments: `{"query":"q${calls}"}`,
+            },
+          ],
         });
       }
 
@@ -542,18 +668,139 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
 
       // MAX_TOOL_ROUNDS calls offered tools; the round after that is sent
       // with no tools key at all, forcing an answer — model keeps
       // returning tool_calls anyway (a hostile/broken model), so the loop
       // stops there rather than looping forever.
       expect(calls).toBe(MAX_TOOL_ROUNDS + 1);
-      expect(toolsSeenPerCall.slice(0, MAX_TOOL_ROUNDS).every((t) => t !== undefined)).toBe(true);
+      expect(
+        toolsSeenPerCall
+          .slice(0, MAX_TOOL_ROUNDS)
+          .every((t) => t !== undefined),
+      ).toBe(true);
       expect(toolsSeenPerCall[MAX_TOOL_ROUNDS]).toBeUndefined();
 
       const lastEvent = events[events.length - 1];
       expect(lastEvent).toEqual({ type: 'done', finishReason: 'tool_calls' });
+    });
+
+    it('withdraws tools once the exchange has spent its failure allowance, before rounds run out', async () => {
+      const conversationStore = new FakeConversationStore();
+      const usageService = new FakeUsageService();
+      const toolRuntime = new FakeToolRuntime();
+      // Every call fails, the way a run of malformed tool arguments did.
+      toolRuntime.results = Array.from(
+        { length: MAX_TOOL_FAILURES_PER_EXCHANGE },
+        () => ({
+          status: 'failed' as const,
+          content:
+            'Invalid arguments for web_fetch. Answer with what you already have.',
+          label: "Couldn't run web_fetch",
+          sources: [],
+        }),
+      );
+
+      let calls = 0;
+      const toolsSeenPerCall: unknown[] = [];
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        toolsSeenPerCall.push(params.tools);
+        yield doneChunk('tool_calls', {
+          toolCalls: [
+            {
+              id: `call-${calls}`,
+              name: 'web_fetch',
+              arguments: '{"url":"https://a.example"}',
+            },
+          ],
+        });
+      }
+
+      const service = new ChatService(
+        conversationStore,
+        usageService,
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      const events: ChatEvent[] = [];
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
+
+      // One round per failure, then one final round with no tools key —
+      // and that is strictly fewer rounds than MAX_TOOL_ROUNDS would have
+      // allowed, which is the whole point: the user does not sit through
+      // five rounds of the same failure.
+      expect(calls).toBe(MAX_TOOL_FAILURES_PER_EXCHANGE + 1);
+      expect(calls).toBeLessThan(MAX_TOOL_ROUNDS + 1);
+      expect(toolsSeenPerCall[MAX_TOOL_FAILURES_PER_EXCHANGE]).toBeUndefined();
+      expect(toolRuntime.executeCalls).toHaveLength(
+        MAX_TOOL_FAILURES_PER_EXCHANGE,
+      );
+    });
+
+    it('resolves the right chip when two calls in one round share a callId', async () => {
+      const conversationStore = new FakeConversationStore();
+      const usageService = new FakeUsageService();
+      const toolRuntime = new FakeToolRuntime();
+      toolRuntime.results = [
+        { status: 'done', content: 'a', label: 'Read a.example', sources: [] },
+        { status: 'done', content: 'b', label: 'Read b.example', sources: [] },
+      ];
+
+      let calls = 0;
+      async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
+        calls += 1;
+        if (calls === 1) {
+          // An upstream that omits ids used to collapse both calls onto
+          // callId '', leaving the second chip stuck on 'running'.
+          yield doneChunk('tool_calls', {
+            toolCalls: [
+              {
+                id: '',
+                name: 'web_fetch',
+                arguments: '{"url":"https://a.example"}',
+              },
+              {
+                id: '',
+                name: 'web_fetch',
+                arguments: '{"url":"https://b.example"}',
+              },
+            ],
+          });
+          return;
+        }
+        yield { type: 'delta', text: 'done' };
+        yield doneChunk('stop');
+      }
+
+      const service = new ChatService(
+        conversationStore,
+        usageService,
+        fakeOpencodeService(stream),
+        toolRuntime,
+      );
+      await service.run('acct-1', body, () => {}, new AbortController().signal);
+
+      const saved = conversationStore.saveToolCallsCalls[0].chips;
+      expect(saved).toHaveLength(2);
+      expect(saved.map((c) => c.label)).toEqual([
+        'Read a.example',
+        'Read b.example',
+      ]);
+      expect(saved.every((c) => c.status === 'done')).toBe(true);
     });
 
     it('a failing execute still yields an answer and no error event', async () => {
@@ -563,7 +810,8 @@ describe('ChatService', () => {
       toolRuntime.results = [
         {
           status: 'failed',
-          content: 'Search failed: provider unreachable. Answer from your own knowledge and say the lookup failed.',
+          content:
+            'Search failed: provider unreachable. Answer from your own knowledge and say the lookup failed.',
           label: 'Couldn\'t search "q"',
           sources: [],
         },
@@ -574,10 +822,15 @@ describe('ChatService', () => {
         calls += 1;
         if (calls === 1) {
           yield doneChunk('tool_calls', {
-            toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query":"q"}' }],
+            toolCalls: [
+              { id: 'call-1', name: 'web_search', arguments: '{"query":"q"}' },
+            ],
           });
         } else {
-          yield { type: 'delta', text: 'I could not search, but here is what I know.' };
+          yield {
+            type: 'delta',
+            text: 'I could not search, but here is what I know.',
+          };
           yield doneChunk('stop');
         }
       }
@@ -589,7 +842,12 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
 
       expect(events.some((e) => e.type === 'error')).toBe(false);
       const toolDoneEvent = events.find(
@@ -620,7 +878,9 @@ describe('ChatService', () => {
       async function* stream(): AsyncGenerator<OpencodeStreamChunk> {
         yield { type: 'delta', text: 'partial' };
         yield doneChunk('tool_calls', {
-          toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query":"q"}' }],
+          toolCalls: [
+            { id: 'call-1', name: 'web_search', arguments: '{"query":"q"}' },
+          ],
         });
       }
 
@@ -631,19 +891,31 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('acct-1', body, (e) => events.push(e), abortController.signal);
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        abortController.signal,
+      );
 
       expect(events.some((e) => e.type === 'error')).toBe(false);
       expect(events.some((e) => e.type === 'done')).toBe(false);
       expect(conversationStore.finalizeCalls).toEqual([
-        { assistantMessageId: 'msg-1', content: 'partial', aborted: true, cost: null },
+        {
+          assistantMessageId: 'msg-1',
+          content: 'partial',
+          aborted: true,
+          cost: null,
+        },
       ]);
       // The running chip that was mid-flight when abort landed is still
       // saved (as 'running' — the store coerces it to 'failed', per
       // InMemoryConversationStore/PostgreSQL's saveToolCalls; the service
       // itself just passes along whatever chips exist).
       expect(conversationStore.saveToolCallsCalls[0].chips).toHaveLength(1);
-      expect(conversationStore.saveToolCallsCalls[0].chips[0].callId).toBe('call-1');
+      expect(conversationStore.saveToolCallsCalls[0].chips[0].callId).toBe(
+        'call-1',
+      );
     });
 
     it('a model not in TOOL_CAPABLE_MODELS streams normally with no tools param and no chips', async () => {
@@ -653,7 +925,9 @@ describe('ChatService', () => {
       const toolRuntime = new FakeToolRuntime();
 
       let seenTools: unknown = 'unset';
-      async function* stream(params: OpencodeChatCompletionParams): AsyncGenerator<OpencodeStreamChunk> {
+      async function* stream(
+        params: OpencodeChatCompletionParams,
+      ): AsyncGenerator<OpencodeStreamChunk> {
         seenTools = params.tools;
         yield { type: 'delta', text: 'hi' };
         yield doneChunk('stop');
@@ -666,7 +940,12 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('acct-1', body, (e) => events.push(e), new AbortController().signal);
+      await service.run(
+        'acct-1',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
 
       expect(seenTools).toBeUndefined();
       expect(events.some((e) => e.type === 'tool')).toBe(false);
@@ -680,7 +959,9 @@ describe('ChatService', () => {
         calls += 1;
         if (calls === 1) {
           yield doneChunk('tool_calls', {
-            toolCalls: [{ id: 'call-1', name: 'web_search', arguments: '{"query":"x"}' }],
+            toolCalls: [
+              { id: 'call-1', name: 'web_search', arguments: '{"query":"x"}' },
+            ],
           });
         } else {
           yield doneChunk('stop');
@@ -693,15 +974,25 @@ describe('ChatService', () => {
         fakeOpencodeService(stream),
         toolRuntime,
       );
-      await service.run('7', body, () => undefined, new AbortController().signal);
+      await service.run(
+        '7',
+        body,
+        () => undefined,
+        new AbortController().signal,
+      );
 
-      expect(toolRuntime.actors).toEqual([{ accountId: 7, conversationId: 'conv-1' }]);
+      expect(toolRuntime.actors).toEqual([
+        { accountId: 7, conversationId: 'conv-1' },
+      ]);
     });
 
     it('carries a proposal card from the tool result onto the chip and the saved row', async () => {
       const conversationStore = new FakeConversationStore();
       const toolRuntime = new FakeToolRuntime();
-      toolRuntime.toolDefinitions = [...TOOL_DEFINITIONS, ...PROPOSAL_TOOL_DEFINITIONS];
+      toolRuntime.toolDefinitions = [
+        ...TOOL_DEFINITIONS,
+        ...PROPOSAL_TOOL_DEFINITIONS,
+      ];
       const card = {
         id: 'p1',
         kind: 'calendar_event' as const,
@@ -730,7 +1021,11 @@ describe('ChatService', () => {
         if (calls === 1) {
           yield doneChunk('tool_calls', {
             toolCalls: [
-              { id: 'call-1', name: 'create_calendar_event', arguments: '{"title":"Dentist"}' },
+              {
+                id: 'call-1',
+                name: 'create_calendar_event',
+                arguments: '{"title":"Dentist"}',
+              },
             ],
           });
         } else {
@@ -745,7 +1040,12 @@ describe('ChatService', () => {
         toolRuntime,
       );
       const events: ChatEvent[] = [];
-      await service.run('7', body, (e) => events.push(e), new AbortController().signal);
+      await service.run(
+        '7',
+        body,
+        (e) => events.push(e),
+        new AbortController().signal,
+      );
 
       expect(events[1]).toEqual({
         type: 'tool',
@@ -768,15 +1068,21 @@ describe('ChatService', () => {
           proposal: card,
         },
       });
-      expect(conversationStore.saveToolCallsCalls[0].chips[0].proposal).toEqual(card);
+      expect(conversationStore.saveToolCallsCalls[0].chips[0].proposal).toEqual(
+        card,
+      );
     });
 
     it('warns the model that a proposal is not an action, only when write tools are offered', async () => {
-      async function collectSystemPrompt(definitions: ToolDefinition[]): Promise<string> {
+      async function collectSystemPrompt(
+        definitions: ToolDefinition[],
+      ): Promise<string> {
         const toolRuntime = new FakeToolRuntime();
         toolRuntime.toolDefinitions = definitions;
         let seen = '';
-        async function* stream(params: OpencodeChatCompletionParams): AsyncGenerator<OpencodeStreamChunk> {
+        async function* stream(
+          params: OpencodeChatCompletionParams,
+        ): AsyncGenerator<OpencodeStreamChunk> {
           seen = String(params.messages[0].content);
           yield doneChunk('stop');
         }
@@ -786,7 +1092,12 @@ describe('ChatService', () => {
           fakeOpencodeService(stream),
           toolRuntime,
         );
-        await service.run('7', body, () => undefined, new AbortController().signal);
+        await service.run(
+          '7',
+          body,
+          () => undefined,
+          new AbortController().signal,
+        );
         return seen;
       }
 

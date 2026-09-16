@@ -1,5 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { ChatEvent, ChatRequest, ToolCallChip, ToolName } from '@contracts/chat';
+import type {
+  ChatEvent,
+  ChatRequest,
+  ToolCallChip,
+  ToolName,
+} from '@contracts/chat';
 import type { UsageService } from '@contracts/usage-service';
 import { CONVERSATION_STORE, ConversationStore } from './conversation-store';
 import { USAGE_SERVICE } from './in-memory-usage-service';
@@ -7,7 +12,11 @@ import { isToolCapableModel } from './tool-capable-models';
 import { OpencodeService } from '../opencode/opencode.service';
 import { OpencodeUpstreamError } from '../opencode/opencode-client.types';
 import type { OpencodeMessage } from '../opencode/opencode-client.types';
-import { TOOL_RUNTIME, ToolRuntime, type ToolActor } from '../tools/tool-runtime';
+import {
+  TOOL_RUNTIME,
+  ToolRuntime,
+  type ToolActor,
+} from '../tools/tool-runtime';
 import { MAX_TOOL_ROUNDS, ToolBudget } from '../tools/tool-budget';
 
 /** `Searching…` / `Reading…` / `Preparing…` — the real label arrives with the result. */
@@ -37,7 +46,10 @@ function provisionalLabel(name: string): string {
  * that thinks `create_calendar_event` created something writes "I've added
  * that to your calendar" above a card the user has not touched.
  */
-function buildSystemPrompt(toolsOffered: boolean, proposalToolsOffered: boolean): string {
+function buildSystemPrompt(
+  toolsOffered: boolean,
+  proposalToolsOffered: boolean,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const base = `You are a helpful assistant in a personal chat app. Today's date is ${today}.`;
   if (!toolsOffered) {
@@ -135,7 +147,9 @@ export class ChatService {
       toolsOffered &&
       this.toolRuntime
         .definitions()
-        .some((definition) => definition.function.name === 'create_calendar_event');
+        .some(
+          (definition) => definition.function.name === 'create_calendar_event',
+        );
 
     const actor: ToolActor = { accountId: Number(accountId), conversationId };
 
@@ -147,7 +161,10 @@ export class ChatService {
       });
 
       const messages: OpencodeMessage[] = [
-        { role: 'system', content: buildSystemPrompt(toolsOffered, proposalToolsOffered) },
+        {
+          role: 'system',
+          content: buildSystemPrompt(toolsOffered, proposalToolsOffered),
+        },
         ...history.map((h) => ({ role: h.role, content: h.content })),
       ];
 
@@ -160,7 +177,12 @@ export class ChatService {
           break;
         }
 
-        const sendTools = toolsOffered && rounds < MAX_TOOL_ROUNDS;
+        // `budget.failuresExhausted` is the second ceiling alongside
+        // MAX_TOOL_ROUNDS: rounds bound how long the model may work, this
+        // bounds how long it may keep failing. Once it trips, the round is
+        // sent with no `tools` key and the model has to answer.
+        const sendTools =
+          toolsOffered && rounds < MAX_TOOL_ROUNDS && !budget.failuresExhausted;
         let roundText = '';
         let emittedThinking = false;
         let finishReason: string | null = null;
@@ -204,7 +226,11 @@ export class ChatService {
         // `tools` key, so a `finish_reason: 'tool_calls'` here can only be
         // a broken or hostile upstream, never a legitimate call — trusting
         // it would loop forever past the budget this check exists for.
-        if (!sendTools || finishReason !== 'tool_calls' || toolCalls.length === 0) {
+        if (
+          !sendTools ||
+          finishReason !== 'tool_calls' ||
+          toolCalls.length === 0
+        ) {
           emit({ type: 'done', finishReason: finishReason ?? 'stop' });
           break;
         }
@@ -232,7 +258,11 @@ export class ChatService {
             label: provisionalLabel(call.name),
             sources: [],
           };
-          chips.push(runningChip);
+          // Position, not a callId lookup: two calls in one exchange can
+          // share an id (or carry none) when the upstream omits them, and
+          // a findIndex miss returns -1, which writes chips[-1] into
+          // nowhere and leaves the chip stuck on 'running' forever.
+          const chipIndex = chips.push(runningChip) - 1;
           emit({ type: 'tool', chip: runningChip });
 
           const result = await this.toolRuntime.execute(
@@ -249,11 +279,14 @@ export class ChatService {
             sources: result.sources,
             ...(result.proposal ? { proposal: result.proposal } : {}),
           };
-          const index = chips.findIndex((c) => c.callId === call.id);
-          chips[index] = finishedChip;
+          chips[chipIndex] = finishedChip;
           emit({ type: 'tool', chip: finishedChip });
 
-          messages.push({ role: 'tool', content: result.content, tool_call_id: call.id });
+          messages.push({
+            role: 'tool',
+            content: result.content,
+            tool_call_id: call.id,
+          });
         }
 
         if (aborted) {
@@ -290,7 +323,10 @@ export class ChatService {
           });
         }
       } else {
-        this.logger.error('Unexpected error streaming from OpenCode', err as Error);
+        this.logger.error(
+          'Unexpected error streaming from OpenCode',
+          err as Error,
+        );
         emit({
           type: 'error',
           code: 'UPSTREAM',

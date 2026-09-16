@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { SseFrameParser } from './sse-frame-parser';
 import {
   AccumulatedToolCall,
@@ -23,7 +24,13 @@ interface ParsedFrame {
   finishReason?: string;
   deltaText?: string;
   reasoning: boolean;
-  toolCallFragment?: ToolCallFragment;
+  /**
+   * Every entry of this frame's `delta.tool_calls`, not just the first.
+   * An upstream is free to batch several parallel calls into one frame,
+   * or to repeat already-seen entries cumulatively — reading only [0]
+   * silently loses calls 2..n.
+   */
+  toolCallFragments?: ToolCallFragment[];
   /** Raw string form of a `cost` field, if this frame carried one. */
   cost?: string;
 }
@@ -49,6 +56,13 @@ interface ParsedFrame {
  * Tool calls stream as fragments keyed by `index` (`delta.tool_calls[]`);
  * reassembly by index happens entirely inside this client — a consumer
  * only ever sees the fully reassembled calls, attached to the `done` chunk.
+ * The framing is treated as advisory rather than fixed, because it is not
+ * one shape in practice: a frame may carry several `tool_calls` entries at
+ * once, may repeat entries it already sent, may deliver them in the same
+ * frame as `finish_reason`, and may hand back `function.arguments` already
+ * parsed into an object instead of as a JSON string fragment. Every one of
+ * those was silently lossy until 2026-09-16 and surfaced to the user as a
+ * tool that "failed repeatedly" for no visible reason.
  *
  * Behind a narrow class interface deliberately: leaves room for a second
  * transport later without callers caring, but only fetch-based streaming
@@ -105,9 +119,14 @@ export class OpencodeClient {
     // first end-of-stream signal instead of stopping there.
     let finishReason: string | null = null;
     let costRaw: string | undefined;
-    const toolCallFragments = new Map<number, { id?: string; name?: string; args: string }>();
+    const toolCallFragments = new Map<
+      number,
+      { id?: string; name?: string; args: string }
+    >();
 
-    const handleFrame = function* (raw: string): Generator<OpencodeStreamChunk> {
+    const handleFrame = function* (
+      raw: string,
+    ): Generator<OpencodeStreamChunk> {
       const parsed = OpencodeClient.parseFrame(raw);
       if (!parsed) {
         return;
@@ -119,12 +138,12 @@ export class OpencodeClient {
         finishReason ??= 'stop';
         return;
       }
-      if (parsed.finishReason) {
-        finishReason ??= parsed.finishReason;
-        return;
-      }
-      if (parsed.toolCallFragment) {
-        const frag = parsed.toolCallFragment;
+      // A frame's payload is accumulated BEFORE its `finish_reason` is
+      // recorded, and recording one no longer ends the frame: some
+      // upstreams deliver the whole `tool_calls` array in the very frame
+      // that carries `finish_reason: 'tool_calls'`, and returning early
+      // there dropped every call in the round.
+      for (const frag of parsed.toolCallFragments ?? []) {
         const existing = toolCallFragments.get(frag.index) ?? { args: '' };
         if (frag.id) {
           existing.id = frag.id;
@@ -136,14 +155,14 @@ export class OpencodeClient {
           existing.args += frag.argumentsFragment;
         }
         toolCallFragments.set(frag.index, existing);
-        return;
       }
       if (parsed.reasoning) {
         yield { type: 'reasoning' };
-        return;
-      }
-      if (parsed.deltaText) {
+      } else if (parsed.deltaText) {
         yield { type: 'delta', text: parsed.deltaText };
+      }
+      if (parsed.finishReason) {
+        finishReason ??= parsed.finishReason;
       }
     };
 
@@ -168,12 +187,21 @@ export class OpencodeClient {
       reader.releaseLock();
     }
 
-    const toolCalls = OpencodeClient.buildAccumulatedToolCalls(toolCallFragments);
-    const cost = costRaw === undefined ? null : OpencodeClient.parseCost(costRaw);
-    yield { type: 'done', finishReason: finishReason ?? 'stop', toolCalls, cost };
+    const toolCalls =
+      OpencodeClient.buildAccumulatedToolCalls(toolCallFragments);
+    const cost =
+      costRaw === undefined ? null : OpencodeClient.parseCost(costRaw);
+    yield {
+      type: 'done',
+      finishReason: finishReason ?? 'stop',
+      toolCalls,
+      cost,
+    };
   }
 
-  private static async readErrorBody(response: Response): Promise<string | undefined> {
+  private static async readErrorBody(
+    response: Response,
+  ): Promise<string | undefined> {
     try {
       const text = await response.text();
       return text.length > MAX_ERROR_BODY_CHARS
@@ -197,7 +225,15 @@ export class OpencodeClient {
     }
     return [...fragments.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([, call]) => ({ id: call.id ?? '', name: call.name ?? '', arguments: call.args }));
+      .map(([, call]) => ({
+        // An upstream that omits ids used to hand every call the same `''`,
+        // which collapses the chips keyed on it and sends a meaningless
+        // `tool_call_id` back up. The id only has to be unique within the
+        // exchange; nothing upstream can match on it if it never sent one.
+        id: call.id ?? `synthetic-${randomUUID()}`,
+        name: call.name ?? '',
+        arguments: call.args,
+      }));
   }
 
   private static parseFrame(data: string): ParsedFrame | null {
@@ -233,28 +269,28 @@ export class OpencodeClient {
     }
     if (choice.finish_reason) {
       result.finishReason = choice.finish_reason;
-      return result;
+      // Deliberately NOT returning here — the same frame may still carry
+      // the delta this round's tool calls live in.
     }
 
     const delta = choice.delta;
     const toolCalls = delta?.tool_calls;
     if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-      const tc = toolCalls[0] as
-        | { index?: number; id?: string; function?: { name?: string; arguments?: string } }
-        | undefined;
-      if (tc && typeof tc.index === 'number') {
-        result.toolCallFragment = {
-          index: tc.index,
-          id: typeof tc.id === 'string' ? tc.id : undefined,
-          name: typeof tc.function?.name === 'string' ? tc.function.name : undefined,
-          argumentsFragment:
-            typeof tc.function?.arguments === 'string' ? tc.function.arguments : undefined,
-        };
+      const fragments = toolCalls
+        .map((entry, position) =>
+          OpencodeClient.parseToolCallEntry(entry, position),
+        )
+        .filter((fragment): fragment is ToolCallFragment => fragment !== null);
+      if (fragments.length > 0) {
+        result.toolCallFragments = fragments;
       }
       return result;
     }
 
-    if (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+    if (
+      typeof delta?.reasoning_content === 'string' &&
+      delta.reasoning_content.length > 0
+    ) {
       result.reasoning = true;
       return result;
     }
@@ -263,5 +299,45 @@ export class OpencodeClient {
       result.deltaText = text;
     }
     return result;
+  }
+
+  /**
+   * One `delta.tool_calls[]` entry. `position` is the fallback key for an
+   * upstream that omits `index` on a single-call frame; when several calls
+   * are batched into one frame their array order is the only ordering there
+   * is, so it doubles as the index.
+   */
+  private static parseToolCallEntry(
+    entry: unknown,
+    position: number,
+  ): ToolCallFragment | null {
+    const tc = entry as
+      | {
+          index?: number;
+          id?: string;
+          function?: { name?: unknown; arguments?: unknown };
+        }
+      | undefined;
+    if (!tc || typeof tc !== 'object') {
+      return null;
+    }
+    const rawArguments = tc.function?.arguments;
+    return {
+      index: typeof tc.index === 'number' ? tc.index : position,
+      id: typeof tc.id === 'string' && tc.id.length > 0 ? tc.id : undefined,
+      name:
+        typeof tc.function?.name === 'string' ? tc.function.name : undefined,
+      // Normally a string fragment of a JSON document, concatenated across
+      // frames. An upstream that hands back an already-parsed object instead
+      // is re-serialized rather than dropped — dropping it left `arguments`
+      // as `''`, which fails JSON.parse and surfaces as "Couldn't run
+      // web_fetch" for every call in the round.
+      argumentsFragment:
+        typeof rawArguments === 'string'
+          ? rawArguments
+          : rawArguments !== undefined && rawArguments !== null
+            ? JSON.stringify(rawArguments)
+            : undefined,
+    };
   }
 }
