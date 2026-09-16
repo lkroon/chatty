@@ -43,6 +43,7 @@ describe('BriefingService', () => {
   let calendar: jest.Mock;
   let gmail: jest.Mock;
   let tasksFetcher: jest.Mock;
+  let doneFetcher: jest.Mock;
   let proposals: FakeProposals;
   let service: BriefingService;
 
@@ -96,6 +97,11 @@ describe('BriefingService', () => {
           notes: null,
         },
       ]);
+    doneFetcher = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'd1', title: 'Pay invoice', completedAt: `${today}T08:12:00.000Z` },
+      ]);
     proposals = new FakeProposals();
     service = new BriefingService(
       tokens as never,
@@ -103,8 +109,34 @@ describe('BriefingService', () => {
       calendar,
       gmail,
       tasksFetcher,
+      doneFetcher,
       proposals as never,
     );
+  });
+
+  it('asks for what was finished today, from local midnight', async () => {
+    await service.buildItems(1);
+    const [, isoDate, offset] = doneFetcher.mock.calls[0];
+    expect(isoDate).toBe(today);
+    // The zone's offset at its own local midnight, not a fixed one.
+    expect(offset).toMatch(/^[+-]\d{2}:\d{2}$/);
+  });
+
+  it('keeps the tasks section when the done list fails', async () => {
+    doneFetcher.mockRejectedValue(new Error('boom'));
+    const items = await service.buildItems(1);
+    expect(items.doneToday).toEqual({
+      status: 'error',
+      message: 'Could not read what you finished.',
+    });
+    expect(items.tasks.status).toBe('ok');
+  });
+
+  it('leaves what was finished out of the summarization payload', async () => {
+    await service.build(1, 'glm-5.3-flash');
+    const [{ messages }] = opencode.streamChatCompletion.mock.calls[0];
+    // The summary is about what is left to do, not what already is.
+    expect(messages[1].content as string).not.toContain('Pay invoice');
   });
 
   it('summarizes today only, not the rest of the agenda window', async () => {

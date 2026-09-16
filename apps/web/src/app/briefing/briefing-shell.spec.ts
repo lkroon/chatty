@@ -51,6 +51,7 @@ const CONNECTED: Briefing = {
     ],
   },
   tasks: { status: 'ok', items: [] },
+  doneToday: { status: 'ok', items: [] },
   mail: {
     status: 'ok',
     items: [{ id: 'm1', from: 'Alice', subject: 'Lunch?', snippet: 's', receivedAt: '' }],
@@ -455,6 +456,41 @@ describe('BriefingShell', () => {
     // The heading carries the date now, so only lateness stays on the row.
     expect(el.textContent).toContain('Overdue');
     expect(el.textContent).not.toContain('No due date · 1 Book Oslo hotel No due date');
+  });
+
+  it('folds what was finished today, opening it on tap', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const api = new StubApi();
+    api.briefing = {
+      ...CONNECTED,
+      doneToday: {
+        status: 'ok',
+        items: [
+          { id: 'd1', title: 'Pay invoice', completedAt: `${TODAY_ISO}T08:12:00.000Z` },
+          { id: 'd2', title: 'Book Oslo hotel', completedAt: `${TODAY_ISO}T07:00:00.000Z` },
+        ],
+      },
+    };
+    const el = setup(api);
+
+    const fold = el.querySelector('[data-testid="done-today"]') as HTMLButtonElement;
+    expect(fold.textContent).toContain('Done today');
+    expect(fold.textContent).toContain('Pay invoice');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelectorAll('.done').length).toBe(0);
+
+    fold.click();
+    currentFixture.detectChanges();
+
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    expect(el.querySelectorAll('.done').length).toBe(2);
+  });
+
+  it('shows nothing at all when nothing was finished', () => {
+    localStorage.removeItem(BRIEFING_CACHE_KEY);
+    const el = setup(new StubApi());
+    // No empty state: a "Done today · 0" line is a reproach, not information.
+    expect(el.querySelector('[data-testid="done-today"]')).toBeNull();
   });
 
   it('renders due tasks with a complete control', () => {
