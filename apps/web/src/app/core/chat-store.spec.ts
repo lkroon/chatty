@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   ConversationDetail,
   ConversationListItem,
+  ConversationPage,
   Model,
   ProposalCard,
 } from '@contracts';
@@ -19,6 +20,7 @@ class FakeChatApi implements ChatApi {
     { id: 'model-b', label: 'Model B', family: 'fam' },
   ];
   conversations: ConversationListItem[] = [{ id: 'c1', title: 'First', updatedAt: 'now' }];
+  conversationPage: ConversationPage = { items: this.conversations, nextCursor: null };
   detail: ConversationDetail = {
     id: 'c1',
     title: 'First',
@@ -31,6 +33,9 @@ class FakeChatApi implements ChatApi {
   }
   listConversations() {
     return of(this.conversations);
+  }
+  listConversationPage() {
+    return of(this.conversationPage);
   }
   getConversation() {
     return of(this.detail);

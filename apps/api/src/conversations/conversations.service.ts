@@ -4,11 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import type { ToolCallChip } from '@contracts/chat';
 import type {
   ConversationDetail,
-  ConversationListItem,
+  ConversationPage,
   Message,
 } from '@contracts/conversation';
 import { conversations, messageToolCalls, messages } from '../db/schema';
@@ -19,6 +19,10 @@ import type {
   ConversationHistoryMessage,
   ConversationStore,
 } from '../chat/conversation-store';
+import {
+  decodeConversationCursor,
+  encodeConversationCursor,
+} from './conversation-cursor';
 
 export interface StartExchangeInput {
   accountId: string;
@@ -228,7 +232,33 @@ export class ConversationsService implements ConversationStore {
     }));
   }
 
-  async listForAccount(accountId: string): Promise<ConversationListItem[]> {
+  async listForAccount(
+    accountId: string,
+    opts: { limit?: number; cursor?: string },
+  ): Promise<ConversationPage> {
+    const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+
+    // Keyset pagination on (updatedAt DESC, id DESC): everything strictly
+    // below the cursor row in that ordering. Drizzle has no row-value
+    // tuple comparison, so (updated_at, id) < (cursorUpdatedAt, cursorId)
+    // expands into or()/and(). Built only when a cursor is present —
+    // lt()/eq() must never receive undefined bound params.
+    const conditions = [eq(conversations.accountId, Number(accountId))];
+    if (opts.cursor) {
+      const { updatedAt: cursorUpdatedAt, id: cursorId } =
+        decodeConversationCursor(opts.cursor);
+      conditions.push(
+        or(
+          lt(conversations.updatedAt, cursorUpdatedAt),
+          and(
+            eq(conversations.updatedAt, cursorUpdatedAt),
+            lt(conversations.id, cursorId),
+          ),
+        )!,
+      );
+    }
+
+    // One row beyond the limit purely to detect a next page.
     const rows = await this.db
       .select({
         id: conversations.id,
@@ -236,14 +266,24 @@ export class ConversationsService implements ConversationStore {
         updatedAt: conversations.updatedAt,
       })
       .from(conversations)
-      .where(eq(conversations.accountId, Number(accountId)))
-      .orderBy(desc(conversations.updatedAt));
+      .where(and(...conditions))
+      .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+      .limit(limit + 1);
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title ?? '',
-      updatedAt: (row.updatedAt ?? new Date()).toISOString(),
-    }));
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page.at(-1);
+    return {
+      items: page.map((row) => ({
+        id: row.id,
+        title: row.title ?? '',
+        updatedAt: (row.updatedAt ?? new Date()).toISOString(),
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeConversationCursor(last.updatedAt, last.id)
+          : null,
+    };
   }
 
   async getDetailForAccount(

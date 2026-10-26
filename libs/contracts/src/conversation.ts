@@ -42,3 +42,8 @@ export interface ConversationDetail {
   title: string;
   messages: Message[];
 }
+
+export interface ConversationPage {
+  items: ConversationListItem[];
+  nextCursor: string | null;
+}

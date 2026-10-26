@@ -7,6 +7,7 @@ import type {
   ChatRequest,
   ConversationDetail,
   ConversationListItem,
+  ConversationPage,
   Model,
   ProposalCard,
 } from '@contracts';
@@ -43,6 +44,13 @@ class TestChatApi implements ChatApi {
 
   listConversations(): Observable<ConversationListItem[]> {
     return of([{ id: this.seed.id, title: this.seed.title, updatedAt: new Date().toISOString() }]);
+  }
+
+  listConversationPage(): Observable<ConversationPage> {
+    return of({
+      items: [{ id: this.seed.id, title: this.seed.title, updatedAt: new Date().toISOString() }],
+      nextCursor: null,
+    });
   }
 
   getConversation(): Observable<ConversationDetail> {

@@ -71,12 +71,53 @@ describeIfDocker('ConversationsModule wiring (integration)', () => {
     await request(app.getHttpServer()).get('/conversations').expect(401);
   });
 
-  it('GET /conversations returns [] for an account with no conversations', async () => {
+  it('GET /conversations returns an empty page for an account with no conversations', async () => {
     const res = await request(app.getHttpServer())
       .get('/conversations')
       .set('x-test-account-id', String(accountId))
       .expect(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual({ items: [], nextCursor: null });
+  });
+
+  it('GET /conversations paginates via limit/cursor query params', async () => {
+    const svc = app.get(ConversationsService);
+    const created = [];
+    for (let i = 0; i < 3; i++) {
+      created.push(
+        await svc.startExchange({
+          accountId: String(accountId),
+          model: 'm',
+          userContent: `c${i}`,
+        }),
+      );
+    }
+
+    const first = await request(app.getHttpServer())
+      .get('/conversations?limit=2')
+      .set('x-test-account-id', String(accountId))
+      .expect(200);
+    expect(first.body.items.length).toBe(2);
+    expect(first.body.nextCursor).toBeTruthy();
+
+    const second = await request(app.getHttpServer())
+      .get(`/conversations?limit=2&cursor=${encodeURIComponent(first.body.nextCursor)}`)
+      .set('x-test-account-id', String(accountId))
+      .expect(200);
+    expect(second.body.items.length).toBe(1);
+    expect(second.body.nextCursor).toBeNull();
+    const seen = [...first.body.items, ...second.body.items].map(
+      (c: { id: string }) => c.id,
+    );
+    expect(seen.sort()).toEqual(
+      created.map((c) => c.conversationId).sort(),
+    );
+  });
+
+  it('GET /conversations returns 400 for a garbage cursor', async () => {
+    await request(app.getHttpServer())
+      .get('/conversations?cursor=not-a-cursor')
+      .set('x-test-account-id', String(accountId))
+      .expect(400);
   });
 
   it('GET /conversations/:id returns 404 for a conversation owned by a different account', async () => {

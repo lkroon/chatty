@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
@@ -27,7 +27,7 @@ async function expectRejectsWith(
 describe('ConversationsController', () => {
   function makeService() {
     return {
-      listForAccount: jest.fn().mockResolvedValue([]),
+      listForAccount: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
       getDetailForAccount: jest.fn().mockResolvedValue({
         id: 'c1',
         title: 't',
@@ -53,7 +53,36 @@ describe('ConversationsController', () => {
     const service = makeService();
     const controller = new ConversationsController(service);
     await controller.list(reqWithAccount('42'));
-    expect(service.listForAccount).toHaveBeenCalledWith('42');
+    expect(service.listForAccount).toHaveBeenCalledWith('42', {
+      limit: undefined,
+      cursor: undefined,
+    });
+  });
+
+  it('list() parses a numeric limit and forwards the cursor untouched', async () => {
+    const service = makeService();
+    const controller = new ConversationsController(service);
+    await controller.list(reqWithAccount('42'), '7', 'abc123');
+    expect(service.listForAccount).toHaveBeenCalledWith('42', {
+      limit: 7,
+      cursor: 'abc123',
+    });
+  });
+
+  it('list() throws BadRequest when limit is not a positive integer', async () => {
+    const controller = new ConversationsController(makeService());
+    await expectRejectsWith(
+      controller.list(reqWithAccount('42'), 'abc'),
+      BadRequestException,
+    );
+    await expectRejectsWith(
+      controller.list(reqWithAccount('42'), '3.5'),
+      BadRequestException,
+    );
+    await expectRejectsWith(
+      controller.list(reqWithAccount('42'), '0'),
+      BadRequestException,
+    );
   });
 
   it('detail() scopes to the session accountId', async () => {
