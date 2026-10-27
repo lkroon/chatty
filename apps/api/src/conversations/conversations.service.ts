@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
@@ -11,10 +12,17 @@ import type {
   ConversationPage,
   Message,
 } from '@contracts/conversation';
-import { conversations, messageToolCalls, messages } from '../db/schema';
+import {
+  conversations,
+  messageEmbeddings,
+  messageToolCalls,
+  messages,
+} from '../db/schema';
 import { DB, type Db } from '../db/tokens';
 import { toProposalCard } from '../proposals/proposal-card';
 import { ProposalsRepository } from '../proposals/proposals.repository';
+import type { Embedder } from '../embeddings/embeddings.service';
+import { EMBEDDER } from '../embeddings/embeddings.service';
 import type {
   ConversationHistoryMessage,
   ConversationStore,
@@ -34,6 +42,8 @@ export interface StartExchangeInput {
 export interface StartExchangeResult {
   conversationId: string;
   assistantMessageId: string;
+  /** Feature B: the persisted user message, embedded after the tx commits. */
+  userMessageId: string;
 }
 
 export interface FinalizeAssistantMessageInput {
@@ -55,16 +65,19 @@ const TITLE_MAX_LEN = 60;
 //     this service to that token with `useExisting`.
 @Injectable()
 export class ConversationsService implements ConversationStore {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     @Inject(DB) private readonly db: Db,
     private readonly proposalsRepository: ProposalsRepository,
+    @Inject(EMBEDDER) private readonly embedder: Embedder,
   ) {}
 
   async startExchange(input: StartExchangeInput): Promise<StartExchangeResult> {
     const { accountId, model, userContent } = input;
     const accountIdNum = Number(accountId);
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       let conversationId = input.conversationId;
       if (conversationId) {
         await tx.execute(
@@ -113,12 +126,15 @@ export class ConversationsService implements ConversationStore {
         conversationId = created.id;
       }
 
-      await tx.insert(messages).values({
-        conversationId,
-        role: 'user',
-        content: userContent,
-        model,
-      });
+      const [userMessage] = await tx
+        .insert(messages)
+        .values({
+          conversationId,
+          role: 'user',
+          content: userContent,
+          model,
+        })
+        .returning({ id: messages.id });
 
       const [assistantPlaceholder] = await tx
         .insert(messages)
@@ -139,8 +155,15 @@ export class ConversationsService implements ConversationStore {
       return {
         conversationId,
         assistantMessageId: assistantPlaceholder.id,
+        userMessageId: userMessage.id,
       };
     });
+
+    // Feature B: embed the user message only after the transaction commits
+    // — never while holding its locks. Fire-and-forget: the provider's
+    // latency must not delay the chat turn.
+    this.embedMessageBestEffort(result.userMessageId, userContent);
+    return result;
   }
 
   async finalizeAssistantMessage(
@@ -163,6 +186,37 @@ export class ConversationsService implements ConversationStore {
         .set({ updatedAt: new Date() })
         .where(eq(conversations.id, row.conversationId));
     }
+
+    this.embedMessageBestEffort(assistantMessageId, content);
+  }
+
+  /**
+   * Feature B: persist one message's embedding, best-effort. A provider
+   * outage costs searchability of a message, never the chat turn itself —
+   * failures are logged and swallowed, and empty content (aborted
+   * exchanges, or a placeholder that never streamed) is skipped. ON
+   * CONFLICT DO NOTHING keeps a finalize/failure-and-retry from ever
+   * producing a duplicate write attempt on the same message.
+   */
+  private embedMessageBestEffort(messageId: string, content: string): void {
+    if (!this.embedder.enabled || content.trim().length === 0) {
+      return;
+    }
+    void this.embedder
+      .embedText(content)
+      .then((embedding) =>
+        this.db
+          .insert(messageEmbeddings)
+          .values({ messageId, embedding, model: this.embedder.model })
+          .onConflictDoNothing({ target: messageEmbeddings.messageId }),
+      )
+      .catch((err) => {
+        this.logger.warn(
+          `best-effort embedding failed for message ${messageId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
   }
 
   /**

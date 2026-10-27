@@ -9,6 +9,7 @@ import {
 } from '../db/test-postgres';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ProposalsRepository } from '../proposals/proposals.repository';
+import { disabledEmbedder } from '../embeddings/fake-embedder';
 import {
   DETAIL_MAX_CHARS,
   RAW_ARGUMENTS_MAX_CHARS,
@@ -45,7 +46,11 @@ describeIfDocker('ToolErrorsRepository (integration)', () => {
     pool = new Pool({ connectionString: pg.url });
     db = drizzle(pool, { schema });
     repository = new ToolErrorsRepository(db);
-    conversations = new ConversationsService(db, new ProposalsRepository(db));
+    conversations = new ConversationsService(
+      db,
+      new ProposalsRepository(db),
+      disabledEmbedder(),
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -55,7 +60,7 @@ describeIfDocker('ToolErrorsRepository (integration)', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'TRUNCATE tool_call_errors, message_tool_calls, proposals, messages, conversations, accounts RESTART IDENTITY CASCADE',
+      'TRUNCATE tool_call_errors, message_tool_calls, message_embeddings, proposals, messages, conversations, accounts RESTART IDENTITY CASCADE',
     );
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO accounts (email) VALUES ('a@example.com') RETURNING id`,

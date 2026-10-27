@@ -9,6 +9,7 @@ import type {
   ConversationPage,
   Model,
   ProposalCard,
+  SearchHit,
 } from '@contracts';
 
 import { CHAT_API, ChatApi } from '../core/chat-api';
@@ -50,6 +51,10 @@ class TestChatApi implements ChatApi {
 
   getConversation(): Observable<ConversationDetail> {
     return of(structuredClone(this.seed));
+  }
+
+  search(): Observable<SearchHit[]> {
+    return of([]);
   }
 
   deleteConversation(): Observable<void> {

@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { Subject, of } from 'rxjs';
-import type { ChatEvent, ConversationPage, Model, ProposalCard } from '@contracts';
+import type {
+  ChatEvent,
+  ConversationPage,
+  Model,
+  ProposalCard,
+  SearchHit,
+} from '@contracts';
 
 import { CHAT_API, ChatApi } from '../core/chat-api';
 import { ChatStore } from '../core/chat-store';
@@ -30,6 +36,17 @@ class StubChatApi implements ChatApi {
   ];
   /** Index of the next page to serve; readable by tests to count API calls. */
   nextPage = 0;
+  searchHits: SearchHit[] = [
+    {
+      conversationId: 'c1',
+      conversationTitle: 'Search hit title',
+      messageId: 'm-search-1',
+      role: 'user',
+      snippet: 'the meaning of life',
+      score: 0.94,
+      createdAt: 'now',
+    },
+  ];
 
   listModels() {
     return of<Model[]>([]);
@@ -43,6 +60,9 @@ class StubChatApi implements ChatApi {
 
   getConversation() {
     return of({ id: 'c1', title: 'First', messages: [] });
+  }
+  search() {
+    return of(this.searchHits);
   }
 
   deleteConversation() {
@@ -160,5 +180,69 @@ describe('ConversationList', () => {
     const observer = FakeIntersectionObserver.instances.at(-1)!;
     fixture.destroy();
     expect(observer.disconnect).toHaveBeenCalled();
+  });
+
+  describe('search', () => {
+    beforeEach(() => {
+      jasmine.clock().install();
+    });
+
+    afterEach(() => {
+      jasmine.clock().uninstall();
+    });
+
+    function typeQuery(fixture: { detectChanges: () => void; nativeElement: HTMLElement }, query: string): void {
+      const input = fixture.nativeElement.querySelector<HTMLInputElement>('input.search')!;
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      jasmine.clock().tick(300);
+      fixture.detectChanges();
+    }
+
+    it('renders hits in place of conversations while a query is active', () => {
+      const { fixture } = setup();
+      typeQuery(fixture, 'meaning');
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('Search hit title');
+      expect(el.textContent).toContain('the meaning of life');
+      // The paginated conversation list (and its rows) is hidden, not merged
+      // into the hits.
+      expect(el.querySelectorAll('li .title').length).toBe(1);
+      expect(el.textContent).not.toContain('No conversations yet.');
+    });
+
+    it('returns to the conversation list when the query is emptied', () => {
+      const { fixture } = setup();
+      typeQuery(fixture, 'meaning');
+      typeQuery(fixture, '');
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('First');
+      expect(el.textContent).not.toContain('Search hit title');
+    });
+
+    it('clicking a hit selects that conversation and clears the search', () => {
+      const { fixture, store } = setup();
+      const spy = spyOn(store, 'selectConversation');
+      typeQuery(fixture, 'meaning');
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('li.hit .title')!.click();
+      expect(spy).toHaveBeenCalledWith('c1');
+      expect(store.isSearchActive()).toBeFalse();
+    });
+
+    it('does not load more conversations while a search is active', () => {
+      const { fixture, store } = setup();
+      const spy = spyOn(store, 'loadMoreConversations');
+      typeQuery(fixture, 'meaning');
+      intersect(FakeIntersectionObserver.instances.at(-1)!, true);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('shows the empty state for a query with no hits', () => {
+      const { fixture } = setup();
+      api.searchHits = [];
+      typeQuery(fixture, 'nothing matches');
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('No matching messages.');
+    });
   });
 });

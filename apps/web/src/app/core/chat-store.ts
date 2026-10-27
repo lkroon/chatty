@@ -6,6 +6,7 @@ import type {
   Message,
   Model,
   ProposalCard,
+  SearchHit,
   ToolCallChip,
 } from '@contracts';
 
@@ -63,6 +64,14 @@ export class ChatStore {
   readonly activeConversationId = signal<string | null>(null);
   readonly isLoadingConversation = signal(false);
 
+  /** Raw text of the search input; drives everything below. */
+  readonly searchQuery = signal('');
+  /** Hits for the last fired search; empty when idle. */
+  readonly searchHits = signal<SearchHit[]>([]);
+  readonly isSearching = signal(false);
+  /** True while a non-empty query is in the box — the sidebar swaps lists on it. */
+  readonly isSearchActive = computed(() => this.searchQuery().trim() !== '');
+
   readonly messages = signal<Message[]>([]);
   readonly streamingText = signal('');
   readonly isStreaming = signal(false);
@@ -118,6 +127,11 @@ export class ChatStore {
 
   private pendingMessageId: string | null = null;
   private streamSub?: Subscription;
+
+  /** Debounce timer for the sidebar search (B4). */
+  private searchTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Monotonic id of the last fired search — stale responses are dropped. */
+  private searchSequence = 0;
 
   constructor() {
     this.loadModels();
@@ -205,6 +219,58 @@ export class ChatStore {
       error: () => {
         this.isLoadingConversation.set(false);
         this.error.set('Failed to load that conversation.');
+      },
+    });
+  }
+
+  /**
+   * The sidebar search input, debounced ~300ms: typing resets the timer,
+   * a quiet stretch fires the query. An emptied box returns to the
+   * conversation list immediately — no request, hits cleared.
+   */
+  onSearchInput(query: string): void {
+    this.searchQuery.set(query);
+    if (this.searchTimer !== undefined) {
+      clearTimeout(this.searchTimer);
+    }
+    const trimmed = query.trim();
+    if (!trimmed) {
+      this.searchHits.set([]);
+      this.isSearching.set(false);
+      return;
+    }
+    this.isSearching.set(true);
+    this.searchTimer = setTimeout(() => this.runSearch(trimmed), 300);
+  }
+
+  /** Clears the search and returns to the conversation list. */
+  clearSearch(): void {
+    if (this.searchTimer !== undefined) {
+      clearTimeout(this.searchTimer);
+    }
+    this.searchQuery.set('');
+    this.searchHits.set([]);
+    this.isSearching.set(false);
+  }
+
+  private runSearch(query: string): void {
+    const sequence = ++this.searchSequence;
+    this.api.search(query).subscribe({
+      next: (hits) => {
+        // The query may have changed (or been cleared) while this was in
+        // flight — only the newest search may write its results.
+        if (sequence !== this.searchSequence || !this.isSearchActive()) {
+          return;
+        }
+        this.searchHits.set(hits);
+        this.isSearching.set(false);
+      },
+      error: () => {
+        if (sequence !== this.searchSequence || !this.isSearchActive()) {
+          return;
+        }
+        this.isSearching.set(false);
+        this.error.set('Search failed. Please try again.');
       },
     });
   }

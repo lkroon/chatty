@@ -8,6 +8,7 @@ import type {
   ConversationPage,
   Model,
   ProposalCard,
+  SearchHit,
 } from '@contracts';
 
 import { CHAT_API, ChatApi } from './chat-api';
@@ -27,6 +28,17 @@ class FakeChatApi implements ChatApi {
     messages: [{ id: 'm1', role: 'user', content: 'hi', createdAt: 'now', finishReason: null }],
   };
   chatEvents$ = new Subject<ChatEvent>();
+  searchHits: SearchHit[] = [
+    {
+      conversationId: 'c1',
+      conversationTitle: 'First',
+      messageId: 'm1',
+      role: 'user',
+      snippet: 'the meaning of life',
+      score: 0.94,
+      createdAt: 'now',
+    },
+  ];
 
   listModels() {
     return of(this.models);
@@ -35,6 +47,12 @@ class FakeChatApi implements ChatApi {
     return of(this.conversationPage);
   }  getConversation() {
     return of(this.detail);
+  }
+  /** Last query received; readable by tests. */
+  lastSearchQuery = '';
+  search(q: string) {
+    this.lastSearchQuery = q;
+    return of(this.searchHits);
   }
   deleteConversation() {
     return of(undefined);
@@ -245,6 +263,92 @@ describe('ChatStore', () => {
     expect(store.conversations()).toEqual([]);
     expect(store.activeConversationId()).toBeNull();
     expect(store.messages()).toEqual([]);
+  });
+
+  describe('search', () => {
+    beforeEach(() => {
+      jasmine.clock().install();
+    });
+
+    afterEach(() => {
+      jasmine.clock().uninstall();
+    });
+
+    it('fires the query after ~300ms of quiet and stores the hits', () => {
+      const spy = spyOn(api, 'search').and.callThrough();
+      store.onSearchInput('meaning');
+      // Before the debounce: searching, but nothing sent yet.
+      expect(store.isSearching()).toBeTrue();
+      expect(spy).not.toHaveBeenCalled();
+
+      jasmine.clock().tick(300);
+      expect(spy).toHaveBeenCalledWith('meaning');
+      expect(store.searchHits()).toEqual(api.searchHits);
+      expect(store.isSearching()).toBeFalse();
+      expect(store.isSearchActive()).toBeTrue();
+    });
+
+    it('collapses rapid keystrokes into one request', () => {
+      const spy = spyOn(api, 'search').and.callThrough();
+      store.onSearchInput('m');
+      jasmine.clock().tick(150);
+      store.onSearchInput('me');
+      jasmine.clock().tick(150);
+      store.onSearchInput('mea');
+      jasmine.clock().tick(299);
+      expect(spy).not.toHaveBeenCalled();
+      jasmine.clock().tick(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith('mea');
+    });
+
+    it('trims the query, and an emptied box returns to the conversation list with no request', () => {
+      const spy = spyOn(api, 'search').and.callThrough();
+      store.onSearchInput('   meaning   ');
+      jasmine.clock().tick(300);
+      expect(spy).toHaveBeenCalledWith('meaning');
+
+      store.onSearchInput('   ');
+      expect(store.isSearchActive()).toBeFalse();
+      expect(store.searchHits()).toEqual([]);
+      expect(store.isSearching()).toBeFalse();
+
+      jasmine.clock().tick(1000);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops a response that lands after the query was cleared', () => {
+      store.onSearchInput('meaning');
+      jasmine.clock().tick(300); // request fired, response is `of()` = sync
+      // The interesting case is an async response arriving after a clear:
+      const pending = new Subject<SearchHit[]>();
+      spyOn(api, 'search').and.returnValue(pending);
+      store.onSearchInput('another');
+      jasmine.clock().tick(300);
+      store.clearSearch();
+      pending.next(api.searchHits);
+      expect(store.searchHits()).toEqual([]);
+      expect(store.isSearching()).toBeFalse();
+    });
+
+    it('drops an error without leaving the spinner on', () => {
+      spyOn(api, 'search').and.returnValue(throwError(() => new Error('boom')));
+      store.onSearchInput('meaning');
+      jasmine.clock().tick(300);
+      expect(store.isSearching()).toBeFalse();
+      expect(store.error()).toContain('Search failed');
+      expect(store.searchHits()).toEqual([]);
+    });
+
+    it('clearSearch resets the whole search state', () => {
+      store.onSearchInput('meaning');
+      jasmine.clock().tick(300);
+      store.clearSearch();
+      expect(store.searchQuery()).toBe('');
+      expect(store.searchHits()).toEqual([]);
+      expect(store.isSearching()).toBeFalse();
+      expect(store.isSearchActive()).toBeFalse();
+    });
   });
 
   it('streams deltas progressively and finalizes into a message on done', () => {

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   bigserial,
+  customType,
   date,
   index,
   integer,
@@ -73,6 +74,42 @@ export const messages = pgTable(
     check('messages_role_check', sql`${table.role} in ('user','assistant')`),
   ],
 );
+
+/**
+ * pgvector's `vector` column type. Drizzle has no built-in — declared with
+ * `customType`: `data` is a plain `number[]` in TS, `toDriver` serializes to
+ * pgvector's text form `'[0.1,0.2,...]'` which Postgres then applies the
+ * vector input function to. The dimension is fixed at 1536 here and must
+ * equal EMBEDDING_DIMENSIONS in the environment (see the
+ * message_embeddings migration).
+ */
+const vector = customType<{ data: number[]; driver: string }>({
+  dataType() {
+    return 'vector(1536)';
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(',')}]`;
+  },
+});
+
+/**
+ * Feature B: one embedding per message, written best-effort on the same
+ * paths that persist messages (ConversationsService). `model` records the
+ * embedding model used, so a future provider change can tell which rows
+ * need re-embedding. CASCADE on the message: deleting a conversation
+ * deletes its messages, and their embeddings go with them — same bargain
+ * the rest of the transcript makes.
+ */
+export const messageEmbeddings = pgTable('message_embeddings', {
+  messageId: uuid('message_id')
+    .primaryKey()
+    .references(() => messages.id, { onDelete: 'cascade' }),
+  embedding: vector('embedding').notNull(),
+  model: text('model').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
 
 // Wave 1.5: the tool calls (web_search/web_fetch) an assistant message's
 // exchange made, one row per call, in `ordinal` order. Tool results

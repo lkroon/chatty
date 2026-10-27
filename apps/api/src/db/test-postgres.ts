@@ -46,8 +46,10 @@ export function isDockerAvailable(): boolean {
 }
 
 /**
- * Starts an ephemeral `postgres:16` container on a random local port and
- * waits for it to accept connections. Each call gets its own uniquely
+ * Starts an ephemeral `pgvector/pgvector:pg16` container on a random local
+ * port and waits for it to accept connections. pgvector, not stock
+ * postgres:16, because the migrations these specs run include the
+ * `vector` extension (Feature B). Each call gets its own uniquely
  * named, `--rm` container so this workstream's integration tests never
  * collide with another workstream's own Postgres containers running
  * concurrently on the same dev host / CI runner.
@@ -79,7 +81,7 @@ export async function startTestPostgres(): Promise<TestPostgres> {
     `POSTGRES_DB=${database}`,
     '-p',
     `${port}:5432`,
-    'postgres:16',
+    'pgvector/pgvector:pg16',
   ]);
 
   const stop = () => {

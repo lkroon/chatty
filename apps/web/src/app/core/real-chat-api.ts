@@ -8,6 +8,7 @@ import type {
   ConversationPage,
   Model,
   ProposalCard,
+  SearchHit,
 } from '@contracts';
 
 import { ChatApi } from './chat-api';
@@ -42,6 +43,11 @@ export class RealChatApi implements ChatApi {
 
   getConversation(id: string): Observable<ConversationDetail> {
     return from(this.getJson<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`));
+  }
+
+  search(q: string): Observable<SearchHit[]> {
+    const params = new URLSearchParams({ q });
+    return from(this.getJson<SearchHit[]>(`/api/search?${params.toString()}`));
   }
 
   deleteConversation(id: string): Observable<void> {
