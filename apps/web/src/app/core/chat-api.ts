@@ -4,7 +4,6 @@ import type {
   ChatEvent,
   ChatRequest,
   ConversationDetail,
-  ConversationListItem,
   ConversationPage,
   Model,
   ProposalCard,
@@ -17,11 +16,9 @@ import type {
  */
 export interface ChatApi {
   listModels(): Observable<Model[]>;
-  listConversations(): Observable<ConversationListItem[]>;
   /**
-   * Paginated replacement for `listConversations` — keyset cursor from the
-   * previous page's `nextCursor`, absent means first page. `listConversations`
-   * stays until the store migrates (A4), then gets deleted.
+   * Paginated conversation list — keyset cursor from the previous page's
+   * `nextCursor`, absent means first page.
    */
   listConversationPage(cursor?: string): Observable<ConversationPage>;
   getConversation(id: string): Observable<ConversationDetail>;
