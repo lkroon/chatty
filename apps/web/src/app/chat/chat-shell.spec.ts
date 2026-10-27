@@ -6,7 +6,7 @@ import type {
   ChatEvent,
   ChatRequest,
   ConversationDetail,
-  ConversationListItem,
+  ConversationPage,
   Model,
   ProposalCard,
 } from '@contracts';
@@ -41,8 +41,11 @@ class TestChatApi implements ChatApi {
     return of([{ id: 'test-model', label: 'Test model', family: 'test' }]);
   }
 
-  listConversations(): Observable<ConversationListItem[]> {
-    return of([{ id: this.seed.id, title: this.seed.title, updatedAt: new Date().toISOString() }]);
+  listConversationPage(): Observable<ConversationPage> {
+    return of({
+      items: [{ id: this.seed.id, title: this.seed.title, updatedAt: new Date().toISOString() }],
+      nextCursor: null,
+    });
   }
 
   getConversation(): Observable<ConversationDetail> {

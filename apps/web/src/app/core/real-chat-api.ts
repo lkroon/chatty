@@ -5,7 +5,7 @@ import type {
   ChatEvent,
   ChatRequest,
   ConversationDetail,
-  ConversationListItem,
+  ConversationPage,
   Model,
   ProposalCard,
 } from '@contracts';
@@ -29,8 +29,15 @@ export class RealChatApi implements ChatApi {
     return from(this.getJson<Model[]>('/api/models'));
   }
 
-  listConversations(): Observable<ConversationListItem[]> {
-    return from(this.getJson<ConversationListItem[]>('/api/conversations'));
+  listConversationPage(cursor?: string): Observable<ConversationPage> {
+    const params = new URLSearchParams();
+    if (cursor) {
+      params.set('cursor', cursor);
+    }
+    const qs = params.toString();
+    return from(
+      this.getJson<ConversationPage>(`/api/conversations${qs ? `?${qs}` : ''}`),
+    );
   }
 
   getConversation(id: string): Observable<ConversationDetail> {

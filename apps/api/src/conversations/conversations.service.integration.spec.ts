@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { BadRequestException } from '@nestjs/common';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema';
 import { runMigrations } from '../db/run-migrations';
@@ -272,10 +273,136 @@ describeIfDocker('ConversationsService (integration)', () => {
       userContent: 'a2',
     });
 
-    const list = await service.listForAccount(String(accountAId));
-    expect(list.map((c) => c.id).sort()).toEqual(
+    const opt = { limit: 10 };
+
+    const list = await service.listForAccount(String(accountAId), opt);
+    expect(list.items.map((c) => c.id).sort()).toEqual(
       [a1.conversationId, a2.conversationId].sort(),
     );
+  });
+
+  it('paginates keyset-style: two full pages, a final partial page, then a null cursor', async () => {
+    const created: { conversationId: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      created.push(
+        await service.startExchange({
+          accountId: String(accountAId),
+          model: 'm',
+          userContent: `c${i}`,
+        }),
+      );
+    }
+    const other = await service.startExchange({
+      accountId: String(accountBId),
+      model: 'm',
+      userContent: 'other account',
+    });
+
+    // Distinct timestamps in creation order, so newest-first is c4..c0.
+    for (let i = 0; i < created.length; i++) {
+      await pool.query(
+        'UPDATE conversations SET updated_at = $1 WHERE id = $2',
+        [new Date(Date.UTC(2026, 0, 1, 12, i, 0)), created[i].conversationId],
+      );
+    }
+    // Newest overall — but account B's row must never surface in A's pages.
+    await pool.query(
+      'UPDATE conversations SET updated_at = $1 WHERE id = $2',
+      [new Date(Date.UTC(2026, 0, 2, 12, 0, 0)), other.conversationId],
+    );
+
+    const seen: string[] = [];
+    const pageSizes: number[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const page = await service.listForAccount(String(accountAId), {
+        limit: 2,
+        cursor,
+      });
+      pageSizes.push(page.items.length);
+      seen.push(...page.items.map((c) => c.id));
+      if (page.nextCursor === null) {
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+
+    expect(pageSizes).toEqual([2, 2, 1]);
+    expect(seen).toEqual(
+      created
+        .slice()
+        .reverse()
+        .map((c) => c.conversationId),
+    );
+  });
+
+  it('returns a null nextCursor when the rows land exactly on the limit boundary', async () => {
+    await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'a',
+    });
+    await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'b',
+    });
+
+    const page = await service.listForAccount(String(accountAId), {
+      limit: 2,
+    });
+    expect(page.items.length).toBe(2);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('tie-breaks identical updated_at values by id DESC so paging is deterministic', async () => {
+    const created: { conversationId: string }[] = [];
+    for (let i = 0; i < 3; i++) {
+      created.push(
+        await service.startExchange({
+          accountId: String(accountAId),
+          model: 'm',
+          userContent: `t${i}`,
+        }),
+      );
+    }
+    const sameInstant = new Date(Date.UTC(2026, 5, 1, 12, 0, 0));
+    for (const c of created) {
+      await pool.query(
+        'UPDATE conversations SET updated_at = $1 WHERE id = $2',
+        [sameInstant, c.conversationId],
+      );
+    }
+    // Ground truth from Postgres itself, with the same ordering the
+    // service promises.
+    const { rows } = await pool.query<{ id: string }>(
+      'SELECT id FROM conversations WHERE account_id = $1 ORDER BY updated_at DESC, id DESC',
+      [accountAId],
+    );
+    const expected = rows.map((r) => r.id);
+
+    const first = await service.listForAccount(String(accountAId), {
+      limit: 2,
+    });
+    expect(first.items.map((c) => c.id)).toEqual(expected.slice(0, 2));
+    expect(first.nextCursor).toBeTruthy();
+
+    const second = await service.listForAccount(String(accountAId), {
+      limit: 2,
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(second.items.map((c) => c.id)).toEqual(expected.slice(2));
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('rejects a malformed cursor with BadRequestException', async () => {
+    const err = await expectToReject(
+      service.listForAccount(String(accountAId), {
+        limit: 10,
+        cursor: 'garbage!',
+      }),
+    );
+    expect(err).toBeInstanceOf(BadRequestException);
   });
 
   it("404s (does not leak existence) when reading another account's conversation", async () => {

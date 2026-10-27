@@ -13,8 +13,8 @@ class StubChatApi implements ChatApi {
   listModels() {
     return of(this.models);
   }
-  listConversations() {
-    return of([]);
+  listConversationPage() {
+    return of({ items: [], nextCursor: null });
   }
   getConversation() {
     return of({ id: 'x', title: 'x', messages: [] });

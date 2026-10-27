@@ -53,6 +53,13 @@ export class ChatStore {
   readonly selectedModelId = signal<string>('');
 
   readonly conversations = signal<ConversationListItem[]>([]);
+  /** Keyset cursor for the next page of the conversation list; null when exhausted. */
+  readonly conversationsCursor = signal<string | null>(null);
+  /** True while the next page is in flight; load-more double-fire guard. */
+  readonly isLoadingMore = signal(false);
+  readonly hasMoreConversations = computed(
+    () => this.conversationsCursor() !== null,
+  );
   readonly activeConversationId = signal<string | null>(null);
   readonly isLoadingConversation = signal(false);
 
@@ -144,9 +151,41 @@ export class ChatStore {
   }
 
   loadConversations(): void {
-    this.api.listConversations().subscribe({
-      next: (list) => this.conversations.set(list),
+    // Page-1 reset: replaces the list rather than appending. `done` calls
+    // this to refresh ordering, so a user who scrolled deep is snapped back
+    // to the first page — accepted for v1.
+    this.api.listConversationPage().subscribe({
+      next: (page) => {
+        this.conversations.set(page.items);
+        this.conversationsCursor.set(page.nextCursor);
+      },
       error: () => this.error.set('Failed to load conversations.'),
+    });
+  }
+
+  /** Appends the next page via the stored cursor (A4). */
+  loadMoreConversations(): void {
+    const cursor = this.conversationsCursor();
+    if (this.isLoadingMore() || cursor === null) {
+      return;
+    }
+    this.isLoadingMore.set(true);
+    this.api.listConversationPage(cursor).subscribe({
+      next: (page) => {
+        // A page-1 refresh can race an in-flight load-more and push the
+        // same row into both lists; @for track would throw on duplicate
+        // ids, so appends filter what's already shown.
+        this.conversations.update((list) => {
+          const seen = new Set(list.map((c) => c.id));
+          return [...list, ...page.items.filter((c) => !seen.has(c.id))];
+        });
+        this.conversationsCursor.set(page.nextCursor);
+        this.isLoadingMore.set(false);
+      },
+      error: () => {
+        this.isLoadingMore.set(false);
+        this.error.set('Failed to load more conversations.');
+      },
     });
   }
 

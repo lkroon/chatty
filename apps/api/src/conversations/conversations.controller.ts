@@ -1,16 +1,18 @@
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
   HttpCode,
   Param,
+  Query,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type {
   ConversationDetail,
-  ConversationListItem,
+  ConversationPage,
 } from '@contracts/conversation';
 import { ConversationsService } from './conversations.service';
 // Note: session.d.ts in this directory ambiently augments express-session's
@@ -26,9 +28,16 @@ export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
 
   @Get()
-  async list(@Req() req: Request): Promise<ConversationListItem[]> {
+  async list(
+    @Req() req: Request,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ): Promise<ConversationPage> {
     const accountId = this.requireAccountId(req);
-    return this.conversationsService.listForAccount(accountId);
+    return this.conversationsService.listForAccount(accountId, {
+      limit: this.parseLimit(limit),
+      cursor,
+    });
   }
 
   @Get(':id')
@@ -57,5 +66,18 @@ export class ConversationsController {
       throw new UnauthorizedException();
     }
     return accountId;
+  }
+
+  // Controller owns parsing/validation of the raw query param (400 on
+  // garbage); the service owns the default (30) and the hard cap (100).
+  private parseLimit(raw: string | undefined): number | undefined {
+    if (raw === undefined || raw === '') {
+      return undefined;
+    }
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException('limit must be a positive integer');
+    }
+    return parsed;
   }
 }

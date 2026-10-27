@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   ConversationDetail,
   ConversationListItem,
+  ConversationPage,
   Model,
   ProposalCard,
 } from '@contracts';
@@ -19,6 +20,7 @@ class FakeChatApi implements ChatApi {
     { id: 'model-b', label: 'Model B', family: 'fam' },
   ];
   conversations: ConversationListItem[] = [{ id: 'c1', title: 'First', updatedAt: 'now' }];
+  conversationPage: ConversationPage = { items: this.conversations, nextCursor: 'cursor-1' };
   detail: ConversationDetail = {
     id: 'c1',
     title: 'First',
@@ -29,10 +31,9 @@ class FakeChatApi implements ChatApi {
   listModels() {
     return of(this.models);
   }
-  listConversations() {
-    return of(this.conversations);
-  }
-  getConversation() {
+  listConversationPage() {
+    return of(this.conversationPage);
+  }  getConversation() {
     return of(this.detail);
   }
   deleteConversation() {
@@ -79,6 +80,48 @@ describe('ChatStore', () => {
   it('loads models and conversations on construction', () => {
     expect(store.models()).toEqual(api.models);
     expect(store.conversations()).toEqual(api.conversations);
+  });
+
+  it('exposes the first page cursor and reports more available', () => {
+    expect(store.conversationsCursor()).toBe('cursor-1');
+    expect(store.hasMoreConversations()).toBeTrue();
+  });
+
+  it('loadMoreConversations appends the next page and stores its cursor', () => {
+    api.conversationPage = {
+      items: [{ id: 'c2', title: 'Second', updatedAt: 'now' }],
+      nextCursor: null,
+    };
+    store.loadMoreConversations();
+    expect(store.conversations().map((c) => c.id)).toEqual(['c1', 'c2']);
+    expect(store.conversationsCursor()).toBeNull();
+    expect(store.hasMoreConversations()).toBeFalse();
+    expect(store.isLoadingMore()).toBeFalse();
+  });
+
+  it('loadMoreConversations ignores a second fire while one is in flight', () => {
+    const pending = new Subject<ConversationPage>();
+    spyOn(api, 'listConversationPage').and.returnValue(pending);
+    store.loadMoreConversations();
+    store.loadMoreConversations();
+    expect(api.listConversationPage).toHaveBeenCalledTimes(1);
+    pending.complete();
+  });
+
+  it('loadMoreConversations does nothing once the cursor is exhausted', () => {
+    api.conversationPage = { items: [], nextCursor: null };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        ChatStore,
+        { provide: CHAT_API, useValue: api },
+      ],
+    });
+    store = TestBed.inject(ChatStore);
+    const spy = spyOn(api, 'listConversationPage');
+    store.loadMoreConversations();
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('selects the first model when nothing is stored', () => {

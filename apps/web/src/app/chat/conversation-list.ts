@@ -1,4 +1,12 @@
-import { Component, inject, output } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  OnDestroy,
+  inject,
+  output,
+  viewChild,
+} from '@angular/core';
 
 import { ChatStore } from '../core/chat-store';
 
@@ -24,14 +32,32 @@ import { ChatStore } from '../core/chat-store';
         } @empty {
           <li class="empty">No conversations yet.</li>
         }
+        <li class="sentinel" #sentinel></li>
+        @if (store.isLoadingMore()) {
+          <li class="loading">Loading…</li>
+        }
       </ul>
     </div>
   `,
   styles: `
+    // Same as message-thread's :host rule: the .conversation-list div's
+    // overflow-y: auto only scrolls anything if this host is sized within
+    // chat-shell's sidebar flex column. Without flex: 1/min-height: 0 the
+    // host shrinkwraps to the whole list, the div grows unbounded, and the
+    // sidebar just clips — no scrollbar, and the load-more sentinel sits
+    // forever outside the viewport so IntersectionObserver never fires.
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
     .conversation-list {
       display: flex;
       flex-direction: column;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding: 0 0.7rem 0.7rem;
       gap: 0.7rem;
@@ -87,6 +113,18 @@ import { ChatStore } from '../core/chat-store';
       color: var(--oc-text-muted);
     }
 
+    li.sentinel {
+      height: 1px;
+      flex-shrink: 0;
+    }
+
+    li.loading {
+      opacity: 0.6;
+      padding: 0.5em;
+      font-size: 0.9em;
+      color: var(--oc-text-muted);
+    }
+
     .title {
       flex: 1;
       text-align: left;
@@ -118,11 +156,33 @@ import { ChatStore } from '../core/chat-store';
     }
   `,
 })
-export class ConversationList {
+export class ConversationList implements AfterViewInit, OnDestroy {
   protected readonly store = inject(ChatStore);
 
   /** Emitted after a select/new-chat action, so the shell can close a mobile drawer. */
   readonly activated = output<void>();
+
+  private readonly sentinel =
+    viewChild.required<ElementRef<HTMLLIElement>>('sentinel');
+  private observer: IntersectionObserver | null = null;
+
+  ngAfterViewInit(): void {
+    // IntersectionObserver over a zero-content sentinel row: the browser
+    // does the scroll math, no (scroll) handler needed. The store guards
+    // exhaustion (null cursor) and double-fires, so the callback can call
+    // load-more unconditionally.
+    this.observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        this.store.loadMoreConversations();
+      }
+    });
+    this.observer.observe(this.sentinel().nativeElement);
+  }
+
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
+    this.observer = null;
+  }
 
   protected onNew(): void {
     this.store.newConversation();

@@ -12,8 +12,8 @@ class StubChatApi implements ChatApi {
   listModels() {
     return of([{ id: 'model-a', label: 'Model A', family: 'test' }]);
   }
-  listConversations() {
-    return of([]);
+  listConversationPage() {
+    return of({ items: [], nextCursor: null });
   }
   getConversation() {
     return of({ id: 'x', title: 'x', messages: [] });
