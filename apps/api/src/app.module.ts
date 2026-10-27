@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { DbModule } from './db/db.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { ChatModule } from './chat/chat.module';
+import { SearchModule } from './search/search.module';
 import { OpencodeModule } from './opencode/opencode.module';
 import { GoogleModule } from './google/google.module';
 import { BriefingModule } from './briefing/briefing.module';
@@ -19,6 +20,7 @@ import { HealthController } from './health/health.controller';
     DbModule,
     ConversationsModule,
     ChatModule,
+    SearchModule,
     OpencodeModule,
     GoogleModule,
     BriefingModule,

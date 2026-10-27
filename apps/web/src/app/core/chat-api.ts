@@ -7,6 +7,7 @@ import type {
   ConversationPage,
   Model,
   ProposalCard,
+  SearchHit,
 } from '@contracts';
 
 /**
@@ -22,6 +23,12 @@ export interface ChatApi {
    */
   listConversationPage(cursor?: string): Observable<ConversationPage>;
   getConversation(id: string): Observable<ConversationDetail>;
+  /**
+   * Semantic search over the account's own messages, best matches first.
+   * The backend embeds the query and ranks by cosine distance — the query
+   * never has to match any stored text literally.
+   */
+  search(q: string): Observable<SearchHit[]>;
   deleteConversation(id: string): Observable<void>;
   /**
    * Sends a chat turn and streams back `ChatEvent`s in order: one `meta`,

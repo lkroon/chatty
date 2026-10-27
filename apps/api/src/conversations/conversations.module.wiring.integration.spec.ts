@@ -57,7 +57,7 @@ describeIfDocker('ConversationsModule wiring (integration)', () => {
   beforeEach(async () => {
     const client = new Pool({ connectionString: pg.url });
     await client.query(
-      'TRUNCATE messages, conversations, accounts RESTART IDENTITY CASCADE',
+      'TRUNCATE message_embeddings, messages, conversations, accounts RESTART IDENTITY CASCADE',
     );
     const { rows } = await client.query(
       `INSERT INTO accounts (email) VALUES ('wire-a@example.com'), ('wire-b@example.com') RETURNING id`,

@@ -19,6 +19,9 @@ class StubChatApi implements ChatApi {
   getConversation() {
     return of({ id: 'x', title: 'x', messages: [] });
   }
+  search() {
+    return of([]);
+  }
   deleteConversation() {
     return of(undefined);
   }

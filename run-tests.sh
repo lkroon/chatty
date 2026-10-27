@@ -8,7 +8,7 @@ PG="chatty-test-pg_$$"
 docker network create "$NET" >/dev/null
 docker run -d --rm --name "$PG" --network "$NET" \
   -e POSTGRES_USER=app -e POSTGRES_PASSWORD=app -e POSTGRES_DB=appdb \
-  postgres:16 >/dev/null
+  pgvector/pgvector:pg16 >/dev/null
 
 cleanup() {
   docker rm -f "$PG" >/dev/null 2>&1 || true

@@ -9,7 +9,11 @@
 #   http://localhost:8080
 services:
   db:
-    image: postgres:16
+    # pgvector image (a superset of postgres:16): Feature B's
+    # message_embeddings migration needs the `vector` extension. An
+    # existing pgdata volume keeps working — but the container must be
+    # recreated (`docker compose -f docker-compose.dev.yml up -d`).
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app

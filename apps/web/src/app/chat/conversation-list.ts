@@ -16,26 +16,48 @@ import { ChatStore } from '../core/chat-store';
   template: `
     <div class="conversation-list">
       <button type="button" class="new-chat" (click)="onNew()">+ New chat</button>
+      <input
+        class="search"
+        type="search"
+        placeholder="Search chats…"
+        aria-label="Search conversations"
+        [value]="store.searchQuery()"
+        (input)="onSearchInput($event)"
+      />
       <ul>
-        @for (c of store.conversations(); track c.id) {
-          <li [class.active]="c.id === store.activeConversationId()">
-            <button type="button" class="title" (click)="onSelect(c.id)">{{ c.title }}</button>
-            <button
-              type="button"
-              class="delete"
-              aria-label="Delete conversation"
-              (click)="onDelete($event, c.id)"
-            >
-              ×
-            </button>
-          </li>
-        } @empty {
-          <li class="empty">No conversations yet.</li>
+        @if (store.isSearchActive()) {
+          @for (hit of store.searchHits(); track hit.messageId) {
+            <li class="hit">
+              <button type="button" class="title" (click)="onSelectHit(hit.conversationId)">
+                <span class="hit-title">{{ hit.conversationTitle }}</span>
+                <span class="hit-snippet">{{ hit.snippet }}</span>
+                <span class="hit-score">{{ formatScore(hit.score) }}</span>
+              </button>
+            </li>
+          } @empty {
+            <li class="empty">{{ store.isSearching() ? 'Searching…' : 'No matching messages.' }}</li>
+          }
+        } @else {
+          @for (c of store.conversations(); track c.id) {
+            <li [class.active]="c.id === store.activeConversationId()">
+              <button type="button" class="title" (click)="onSelect(c.id)">{{ c.title }}</button>
+              <button
+                type="button"
+                class="delete"
+                aria-label="Delete conversation"
+                (click)="onDelete($event, c.id)"
+              >
+                ×
+              </button>
+            </li>
+          } @empty {
+            <li class="empty">No conversations yet.</li>
+          }
+          @if (store.isLoadingMore()) {
+            <li class="loading">Loading…</li>
+          }
         }
         <li class="sentinel" #sentinel></li>
-        @if (store.isLoadingMore()) {
-          <li class="loading">Loading…</li>
-        }
       </ul>
     </div>
   `,
@@ -82,6 +104,21 @@ import { ChatStore } from '../core/chat-store';
       opacity: 0.92;
     }
 
+    .search {
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      padding: 0.55em 0.9em;
+      border-radius: var(--oc-r);
+      border: 1px solid var(--oc-accent-soft);
+      background: none;
+      color: inherit;
+      flex-shrink: 0;
+    }
+
+    .search:focus {
+      outline: 1px solid var(--oc-accent);
+    }
+
     ul {
       list-style: none;
       margin: 0;
@@ -123,6 +160,35 @@ import { ChatStore } from '../core/chat-store';
       padding: 0.5em;
       font-size: 0.9em;
       color: var(--oc-text-muted);
+    }
+
+    li.hit .title {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.15em;
+      white-space: normal;
+    }
+
+    .hit-title {
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .hit-snippet {
+      font-size: 0.78rem;
+      opacity: 0.75;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .hit-score {
+      font-size: 0.7rem;
+      opacity: 0.6;
+      text-align: right;
     }
 
     .title {
@@ -170,9 +236,14 @@ export class ConversationList implements AfterViewInit, OnDestroy {
     // IntersectionObserver over a zero-content sentinel row: the browser
     // does the scroll math, no (scroll) handler needed. The store guards
     // exhaustion (null cursor) and double-fires, so the callback can call
-    // load-more unconditionally.
+    // load-more unconditionally — except while a search is active: then
+    // the hits list is showing, not the paginated conversations, and
+    // loading more pages in the background would be wasted work.
     this.observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
+      if (
+        entries.some((entry) => entry.isIntersecting) &&
+        !this.store.isSearchActive()
+      ) {
         this.store.loadMoreConversations();
       }
     });
@@ -192,6 +263,21 @@ export class ConversationList implements AfterViewInit, OnDestroy {
   protected onSelect(id: string): void {
     this.store.selectConversation(id);
     this.activated.emit();
+  }
+
+  /** A search hit opens its conversation and closes the search. */
+  protected onSelectHit(conversationId: string): void {
+    this.store.clearSearch();
+    this.onSelect(conversationId);
+  }
+
+  protected onSearchInput(event: Event): void {
+    this.store.onSearchInput((event.target as HTMLInputElement).value);
+  }
+
+  /** "94%" — enough to rank visually, without implying real percentages. */
+  protected formatScore(score: number): string {
+    return `${Math.max(0, Math.min(1, score) * 100).toFixed(0)}%`;
   }
 
   protected onDelete(event: Event, id: string): void {

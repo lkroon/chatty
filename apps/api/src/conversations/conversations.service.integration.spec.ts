@@ -8,6 +8,9 @@ import {
   startTestPostgres,
   TestPostgres,
 } from '../db/test-postgres';
+import { keywordEmbedder, oneHot } from '../embeddings/fake-embedder';
+import type { Embedder } from '../embeddings/embeddings.service';
+import { toVectorLiteral } from '../search/vector-literal';
 import { ConversationsService } from './conversations.service';
 import { ProposalsRepository } from '../proposals/proposals.repository';
 
@@ -34,6 +37,36 @@ async function expectToReject(promise: Promise<unknown>): Promise<unknown> {
   throw new Error('expected promise to reject, but it resolved');
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The embedding write path is fire-and-forget by design (a slow provider
+ * must not delay the chat turn), so the spec polls the table until the
+ * row lands — bounded, so a real failure surfaces as a timeout rather
+ * than a hang.
+ */
+async function waitForEmbeddingRow(
+  pool: Pool,
+  messageId: string,
+): Promise<{ embedding: unknown; model: string }> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const { rows } = await pool.query(
+      'select embedding, model from message_embeddings where message_id = $1',
+      [messageId],
+    );
+    if (rows.length > 0) {
+      return rows[0];
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`embedding row for ${messageId} never appeared`);
+    }
+    await sleep(25);
+  }
+}
+
 describeIfDocker('ConversationsService (integration)', () => {
   let pg: TestPostgres;
   let pool: Pool;
@@ -42,12 +75,20 @@ describeIfDocker('ConversationsService (integration)', () => {
   let accountAId: number;
   let accountBId: number;
 
+  // keywordEmbedder: 'alpha' → one-hot 0, 'beta' → one-hot 1 — the
+  // write-path tests below assert on those exact vectors.
+  const fakeEmbedder = keywordEmbedder(['alpha', 'beta']);
+
   beforeAll(async () => {
     pg = await startTestPostgres();
     await runMigrations(pg.url);
     pool = new Pool({ connectionString: pg.url });
     db = drizzle(pool, { schema });
-    service = new ConversationsService(db, new ProposalsRepository(db));
+    service = new ConversationsService(
+      db,
+      new ProposalsRepository(db),
+      fakeEmbedder,
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -57,7 +98,7 @@ describeIfDocker('ConversationsService (integration)', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'TRUNCATE message_tool_calls, proposals, messages, conversations, accounts RESTART IDENTITY CASCADE',
+      'TRUNCATE message_tool_calls, message_embeddings, proposals, messages, conversations, accounts RESTART IDENTITY CASCADE',
     );
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO accounts (email) VALUES ('a@example.com'), ('b@example.com') RETURNING id`,
@@ -604,5 +645,94 @@ describeIfDocker('ConversationsService (integration)', () => {
     // The card is rebuilt from the payload, so its fields are present even
     // though an empty array was what got stored on the chip.
     expect(chip.proposal!.fields.length).toBeGreaterThan(0);
+  });
+
+  // --- Feature B: best-effort embedding write path ---
+
+  it('startExchange embeds the user message after the transaction commits', async () => {
+    const { userMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'tell me about alpha',
+    });
+
+    const row = await waitForEmbeddingRow(pool, userMessageId);
+    expect(row.model).toBe('fake-embedding-model');
+    // 'alpha' is keyword 0 in the fake embedder — the stored vector must
+    // be that exact one-hot, round-tripped through pgvector's text form.
+    expect(String(row.embedding)).toBe(toVectorLiteral(oneHot(0)));
+  });
+
+  it('finalizeAssistantMessage embeds non-empty assistant content', async () => {
+    const { assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hello',
+    });
+    await service.finalizeAssistantMessage({
+      assistantMessageId,
+      content: 'the answer is beta',
+      aborted: false,
+    });
+
+    const row = await waitForEmbeddingRow(pool, assistantMessageId);
+    expect(String(row.embedding)).toBe(toVectorLiteral(oneHot(1)));
+  });
+
+  it('finalizeAssistantMessage skips empty content (aborted exchanges with no text)', async () => {
+    const { assistantMessageId } = await service.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'hello',
+    });
+    await service.finalizeAssistantMessage({
+      assistantMessageId,
+      content: '',
+      aborted: true,
+    });
+
+    // Fire-and-forget means "no row" is the absence of a write that may
+    // still be in flight — a bounded wait makes this a timeout on failure
+    // rather than a race that sometimes passes.
+    await sleep(200);
+    const { rows } = await pool.query(
+      'select * from message_embeddings where message_id = $1',
+      [assistantMessageId],
+    );
+    expect(rows.length).toBe(0);
+  });
+
+  it('never fails the chat turn when the embedder errors', async () => {
+    const failing: Embedder = {
+      enabled: true,
+      model: 'failing-model',
+      embedText: () => Promise.reject(new Error('provider down')),
+      embedTexts: () => Promise.reject(new Error('provider down')),
+    };
+    const failingService = new ConversationsService(
+      db,
+      new ProposalsRepository(db),
+      failing,
+    );
+
+    const result = await failingService.startExchange({
+      accountId: String(accountAId),
+      model: 'm',
+      userContent: 'alpha',
+    });
+    await failingService.finalizeAssistantMessage({
+      assistantMessageId: result.assistantMessageId,
+      content: 'beta',
+      aborted: false,
+    });
+
+    // The turn succeeded; the embeddings just didn't happen.
+    expect(result.conversationId).toBeTruthy();
+    await sleep(200);
+    const { rows } = await pool.query(
+      'select * from message_embeddings where message_id in ($1, $2)',
+      [result.userMessageId, result.assistantMessageId],
+    );
+    expect(rows.length).toBe(0);
   });
 });

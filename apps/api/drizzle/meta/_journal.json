@@ -43,6 +43,13 @@
       "when": 1789560000000,
       "tag": "0005_messages_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793059200000,
+      "tag": "0006_message_embeddings",
+      "breakpoints": true
     }
   ]
 }
